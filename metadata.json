@@ -1,0 +1,6 @@
+{
+  "name": "VU LMS Reminder",
+  "description": "Automated activity synchronization, deadline tracking, and smart alarm reminders for Virtual University LMS students.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
