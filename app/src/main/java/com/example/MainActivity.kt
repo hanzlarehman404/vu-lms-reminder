@@ -158,6 +158,8 @@ class MainActivity : ComponentActivity() {
                         val isSyncing by viewModel.isSyncing.collectAsStateWithLifecycle()
                         val syncMessage by viewModel.syncMessage.collectAsStateWithLifecycle()
                         val studentAvatarFile by viewModel.studentAvatarFile.collectAsStateWithLifecycle()
+                        val isCheckingUpdate by viewModel.isCheckingUpdate.collectAsStateWithLifecycle()
+                        val manualUpdateResult by viewModel.manualUpdateResult.collectAsStateWithLifecycle()
 
                         Surface(
                             modifier = Modifier
@@ -194,9 +196,12 @@ class MainActivity : ComponentActivity() {
                                     prefs = viewModel.getPreferences(),
                                     studentId = studentId,
                                     studentAvatarFile = studentAvatarFile,
+                                    isCheckingUpdate = isCheckingUpdate,
+                                    manualUpdateResult = manualUpdateResult,
                                     onLogout = { viewModel.logout() },
                                     onResetCompletions = { viewModel.resetAllCompletions() },
-                                    onCheckUpdate = { viewModel.checkForAppUpdates() },
+                                    onCheckUpdate = { viewModel.checkForAppUpdates(isManual = true) },
+                                    onDismissManualUpdateResult = { viewModel.dismissManualUpdateResult() },
                                     onSetTheme = { viewModel.setAppTheme(it) }
                                 )
                             }

@@ -1,6 +1,0 @@
-{
-  "summary":  "Revised implementation plan for VU LMS Activity Reminder App incorporating user feedback: strict suppression of past-date notifications, customizable notification and full-screen alarm types for urgent same-day deadlines, activity completion tracking with persistent hash IDs to prevent duplicate alerts, first-launch privacy & disclaimer modal with zero-data-leak guarantee, and a dedicated founder credit block for Hanzla Rehman (GitHub: hanzlarehman404) with avatar.",
-  "updatedAt":  "2026-10-31T06:31:18.536528426Z",
-  "requestFeedback":  true,
-  "userFacing":  true
-}

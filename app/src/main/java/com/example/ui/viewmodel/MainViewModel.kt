@@ -17,6 +17,11 @@ sealed class LoginUiState {
     data class Error(val message: String) : LoginUiState()
 }
 
+sealed class ManualUpdateResult {
+    data class UpToDate(val version: String, val releaseName: String) : ManualUpdateResult()
+    data class Error(val message: String) : ManualUpdateResult()
+}
+
 data class DashboardStats(
     val todayCount: Int = 0,
     val tomorrowCount: Int = 0,
@@ -63,6 +68,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _updateInfo = MutableStateFlow<AppUpdateInfo?>(null)
     val updateInfo: StateFlow<AppUpdateInfo?> = _updateInfo.asStateFlow()
+
+    private val _isCheckingUpdate = MutableStateFlow(false)
+    val isCheckingUpdate: StateFlow<Boolean> = _isCheckingUpdate.asStateFlow()
+
+    private val _manualUpdateResult = MutableStateFlow<ManualUpdateResult?>(null)
+    val manualUpdateResult: StateFlow<ManualUpdateResult?> = _manualUpdateResult.asStateFlow()
 
     private val _studentAvatarFile = MutableStateFlow<java.io.File?>(repository.getProfileAvatarFile())
     val studentAvatarFile: StateFlow<java.io.File?> = _studentAvatarFile.asStateFlow()
@@ -218,17 +229,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun checkForAppUpdates() {
+    fun checkForAppUpdates(isManual: Boolean = false) {
         viewModelScope.launch {
+            if (isManual) {
+                _isCheckingUpdate.value = true
+                _manualUpdateResult.value = null
+            }
             val result = repository.checkForUpdate()
+            if (isManual) {
+                _isCheckingUpdate.value = false
+            }
             if (result.isSuccess) {
                 val info = result.getOrNull()
                 // Current versionCode is 1
                 if (info != null && info.versionCode > 1) {
                     _updateInfo.value = info
+                } else if (isManual) {
+                    _manualUpdateResult.value = ManualUpdateResult.UpToDate(
+                        version = info?.version ?: "1.0.0",
+                        releaseName = info?.releaseName.orEmpty()
+                    )
                 }
+            } else if (isManual) {
+                _manualUpdateResult.value = ManualUpdateResult.Error(
+                    "Unable to check for updates right now. Kindly try again later or contact the developer."
+                )
             }
         }
+    }
+
+    fun dismissManualUpdateResult() {
+        _manualUpdateResult.value = null
     }
 
     fun dismissUpdateDialog() {

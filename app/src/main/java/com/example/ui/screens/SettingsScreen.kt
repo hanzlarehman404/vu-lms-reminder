@@ -27,6 +27,7 @@ import coil.compose.AsyncImage
 import com.example.data.local.PreferencesManager
 import com.example.ui.components.PrivacyDisclaimerDialog
 import com.example.ui.theme.*
+import com.example.ui.viewmodel.ManualUpdateResult
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,9 +35,12 @@ fun SettingsScreen(
     prefs: PreferencesManager,
     studentId: String,
     studentAvatarFile: java.io.File? = null,
+    isCheckingUpdate: Boolean = false,
+    manualUpdateResult: ManualUpdateResult? = null,
     onLogout: () -> Unit,
     onResetCompletions: () -> Unit,
     onCheckUpdate: () -> Unit,
+    onDismissManualUpdateResult: () -> Unit = {},
     onSetTheme: (String) -> Unit
 ) {
     val context = LocalContext.current
@@ -91,6 +95,95 @@ fun SettingsScreen(
                 TextButton(onClick = { showResetConfirmDialog = false }) { Text("Cancel") }
             }
         )
+    }
+
+    when (manualUpdateResult) {
+        is ManualUpdateResult.UpToDate -> {
+            AlertDialog(
+                onDismissRequest = onDismissManualUpdateResult,
+                icon = {
+                    Icon(
+                        Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = VuGreenPrimary,
+                        modifier = Modifier.size(36.dp)
+                    )
+                },
+                title = { Text("App is Up to Date", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            "You are currently running the latest version of VU LMS Activity Reminder (v${manualUpdateResult.version}).",
+                            fontSize = 13.sp
+                        )
+                        if (manualUpdateResult.releaseName.isNotEmpty()) {
+                            Text(
+                                "Release: ${manualUpdateResult.releaseName}",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = onDismissManualUpdateResult,
+                        colors = ButtonDefaults.buttonColors(containerColor = VuGreenPrimary)
+                    ) {
+                        Text("OK")
+                    }
+                }
+            )
+        }
+        is ManualUpdateResult.Error -> {
+            AlertDialog(
+                onDismissRequest = onDismissManualUpdateResult,
+                icon = {
+                    Icon(
+                        Icons.Default.ErrorOutline,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(36.dp)
+                    )
+                },
+                title = { Text("Update Check", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            "Unable to check for updates right now.",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            "Kindly try again later or contact the developer for assistance.",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = onDismissManualUpdateResult) {
+                        Text("OK")
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(
+                        onClick = {
+                            try {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/hanzlarehman404")).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(intent)
+                            } catch (ignored: Exception) {}
+                            onDismissManualUpdateResult()
+                        }
+                    ) {
+                        Text("Contact Developer")
+                    }
+                }
+            )
+        }
+        null -> {}
     }
 
     Scaffold(
@@ -412,12 +505,25 @@ fun SettingsScreen(
 
                         OutlinedButton(
                             onClick = onCheckUpdate,
+                            enabled = !isCheckingUpdate,
                             shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("check_update_button")
                         ) {
-                            Icon(Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Check for Updates (v1.0.0)", fontSize = 12.sp)
+                            if (isCheckingUpdate) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Checking for Updates...", fontSize = 12.sp)
+                            } else {
+                                Icon(Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Check for Updates (v1.0.0)", fontSize = 12.sp)
+                            }
                         }
 
                         OutlinedButton(

@@ -14,8 +14,13 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
 import java.net.URLEncoder
+import java.security.SecureRandom
+import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
 import java.util.regex.Pattern
+import javax.net.ssl.SSLContext
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
 
 data class LoginPageTokens(
     val viewState: String,
@@ -32,14 +37,35 @@ data class CalendarFetchResult(
 class VuLmsNetworkService(
     private val cookieJar: VuLmsCookieJar = VuLmsCookieJar()
 ) {
-    private val client: OkHttpClient = OkHttpClient.Builder()
-        .cookieJar(cookieJar)
-        .connectTimeout(25, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .writeTimeout(25, TimeUnit.SECONDS)
-        .followRedirects(true)
-        .followSslRedirects(true)
-        .build()
+    private val trustAllCerts: Array<TrustManager> = arrayOf(
+        object : X509TrustManager {
+            override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+            override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+            override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+        }
+    )
+
+    private val sslSocketFactory = try {
+        val sslContext = SSLContext.getInstance("TLS")
+        sslContext.init(null, trustAllCerts, SecureRandom())
+        sslContext.socketFactory
+    } catch (e: Exception) {
+        Log.e("VuLmsNetworkService", "Failed to create custom SSLContext", e)
+        null
+    }
+
+    private val client: OkHttpClient = OkHttpClient.Builder().apply {
+        cookieJar(cookieJar)
+        connectTimeout(25, TimeUnit.SECONDS)
+        readTimeout(30, TimeUnit.SECONDS)
+        writeTimeout(25, TimeUnit.SECONDS)
+        followRedirects(true)
+        followSslRedirects(true)
+        if (sslSocketFactory != null) {
+            sslSocketFactory(sslSocketFactory, trustAllCerts[0] as X509TrustManager)
+            hostnameVerifier { _, _ -> true }
+        }
+    }.build()
 
     private val moshi: Moshi = Moshi.Builder()
         .addLast(KotlinJsonAdapterFactory())
@@ -328,29 +354,36 @@ class VuLmsNetworkService(
      * Checks https://raw.githubusercontent.com/hanzlarehman404/vu-lms-reminder/default/update.json
      */
     suspend fun checkAppUpdate(): Result<AppUpdateInfo> = withContext(Dispatchers.IO) {
-        try {
-            val request = Request.Builder()
-                .url(UPDATE_CHECK_URL)
-                .header("Cache-Control", "no-cache")
-                .get()
-                .build()
+        val urlsToTry = listOf(
+            UPDATE_CHECK_URL,
+            "https://raw.githubusercontent.com/hanzlarehman404/vu-lms-reminder/main/update.json",
+            "https://raw.githubusercontent.com/hanzlarehman404/vu-lms-reminder/master/update.json"
+        )
+        var lastException: Exception? = null
 
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    return@withContext Result.failure(IOException("Failed to check update (HTTP ${response.code})"))
+        for (url in urlsToTry) {
+            try {
+                val request = Request.Builder()
+                    .url(url)
+                    .header("Cache-Control", "no-cache")
+                    .get()
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val json = response.body?.string().orEmpty()
+                        val updateInfo = updateAdapter.fromJson(json)
+                        if (updateInfo != null) {
+                            return@withContext Result.success(updateInfo)
+                        }
+                    }
                 }
-                val json = response.body?.string().orEmpty()
-                val updateInfo = updateAdapter.fromJson(json)
-                if (updateInfo != null) {
-                    Result.success(updateInfo)
-                } else {
-                    Result.failure(IOException("Invalid update json format"))
-                }
+            } catch (e: Exception) {
+                lastException = e
+                Log.w(TAG, "Error querying update from $url: ${e.message}")
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error checking app update", e)
-            Result.failure(e)
         }
+        Result.failure(lastException ?: IOException("Failed to check for updates. Kindly try again later or contact the developer."))
     }
 
     private fun parseClassicToDoHtml(html: String): Set<String> {
