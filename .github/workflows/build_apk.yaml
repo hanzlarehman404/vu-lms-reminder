@@ -26,6 +26,8 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Prepare Build Environment
+        env:
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
         run: |
           # Ensure .env file exists for Secrets Gradle plugin
           if [ ! -f .env ] && [ -f .env.example ]; then
@@ -34,12 +36,18 @@ jobs:
             touch .env
           fi
 
-          # Restore debug keystore if base64 file exists or generate one
-          if [ -f debug.keystore.base64 ]; then
-            echo "Restoring debug.keystore from base64..."
-            base64 -d debug.keystore.base64 > debug.keystore
+          # Restore debug keystore from GitHub Secret,
+          # otherwise generate a new one.
+          if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
+            echo "Restoring debug.keystore from DEBUG_KEYSTORE_BASE64..."
+
+            echo "$DEBUG_KEYSTORE_BASE64" | base64 --decode > debug.keystore
+
+            echo "Debug keystore restored."
           elif [ ! -f debug.keystore ]; then
-            echo "Generating debug.keystore..."
+            echo "DEBUG_KEYSTORE_BASE64 is not configured."
+            echo "Generating a new debug keystore..."
+
             keytool -genkeypair -v \
               -keystore debug.keystore \
               -storepass android \

@@ -16,6 +16,10 @@
 local.properties
 .env
 debug.keystore
+debug.keystore.base64
+*.jks
+*.keystore
 README.md
 /.github
 /.aistudio
+/.kilo
