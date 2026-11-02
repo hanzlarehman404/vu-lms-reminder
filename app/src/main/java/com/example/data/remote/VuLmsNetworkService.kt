@@ -37,23 +37,6 @@ data class CalendarFetchResult(
 class VuLmsNetworkService(
     private val cookieJar: VuLmsCookieJar = VuLmsCookieJar()
 ) {
-    private val trustAllCerts: Array<TrustManager> = arrayOf(
-        object : X509TrustManager {
-            override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
-            override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
-            override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-        }
-    )
-
-    private val sslSocketFactory = try {
-        val sslContext = SSLContext.getInstance("TLS")
-        sslContext.init(null, trustAllCerts, SecureRandom())
-        sslContext.socketFactory
-    } catch (e: Exception) {
-        Log.e("VuLmsNetworkService", "Failed to create custom SSLContext", e)
-        null
-    }
-
     private val client: OkHttpClient = OkHttpClient.Builder().apply {
         cookieJar(cookieJar)
         connectTimeout(25, TimeUnit.SECONDS)
@@ -61,10 +44,7 @@ class VuLmsNetworkService(
         writeTimeout(25, TimeUnit.SECONDS)
         followRedirects(true)
         followSslRedirects(true)
-        if (sslSocketFactory != null) {
-            sslSocketFactory(sslSocketFactory, trustAllCerts[0] as X509TrustManager)
-            hostnameVerifier { _, _ -> true }
-        }
+        configureSsl(this)
     }.build()
 
     private val moshi: Moshi = Moshi.Builder()
@@ -517,6 +497,55 @@ class VuLmsNetworkService(
         private const val ACCOUNT_BOOK_URL = "https://vulms.vu.edu.pk/AccountBook/AccountBook.aspx"
         private const val PROFILE_IMAGE_URL = "https://vulms.vu.edu.pk/Profile/GridImageTemplate.aspx"
         private const val UPDATE_CHECK_URL = "https://raw.githubusercontent.com/hanzlarehman404/vu-lms-reminder/default/update.json"
-        private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+        const val USER_AGENT = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+
+        private val trustAllCerts: Array<TrustManager> = arrayOf(
+            object : X509TrustManager {
+                override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+                override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+                override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+            }
+        )
+
+        private val sslSocketFactory = try {
+            val sslContext = SSLContext.getInstance("TLS")
+            sslContext.init(null, trustAllCerts, SecureRandom())
+            sslContext.socketFactory
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create custom SSLContext", e)
+            null
+        }
+
+        fun configureSsl(builder: OkHttpClient.Builder): OkHttpClient.Builder {
+            if (sslSocketFactory != null) {
+                builder.sslSocketFactory(sslSocketFactory, trustAllCerts[0] as X509TrustManager)
+                builder.hostnameVerifier { _, _ -> true }
+            }
+            return builder
+        }
+
+        /**
+         * Shared OkHttpClient for Coil and general image loading.
+         * Bypasses the untrusted certificate chain on vulms.vu.edu.pk and adds required browser headers.
+         */
+        val sharedImageOkHttpClient: OkHttpClient by lazy {
+            val builder = OkHttpClient.Builder()
+                .connectTimeout(20, TimeUnit.SECONDS)
+                .readTimeout(25, TimeUnit.SECONDS)
+                .followRedirects(true)
+                .followSslRedirects(true)
+                .addInterceptor { chain ->
+                    val request = chain.request()
+                    val host = request.url.host
+                    val newRequestBuilder = request.newBuilder()
+                    if (host.contains("vu.edu.pk", ignoreCase = true)) {
+                        newRequestBuilder.header("User-Agent", USER_AGENT)
+                        newRequestBuilder.header("Referer", "https://vulms.vu.edu.pk/")
+                        newRequestBuilder.header("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
+                    }
+                    chain.proceed(newRequestBuilder.build())
+                }
+            configureSsl(builder).build()
+        }
     }
 }

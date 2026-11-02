@@ -28,6 +28,8 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.painterResource
+import com.example.R
 import coil.compose.AsyncImage
 import com.example.ui.components.PrivacyDisclaimerDialog
 import com.example.ui.theme.*
@@ -70,9 +72,12 @@ fun LoginScreen(
             ) {
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Official VU LMS Logo (16:10 aspect ratio)
+                // Official VU LMS Logo (16:10 aspect ratio) with bundled vector fallback
                 AsyncImage(
                     model = "https://vulms.vu.edu.pk/App_Themes/Default/Images/logos/logo-1.png",
+                    placeholder = painterResource(R.drawable.ic_vu_logo),
+                    error = painterResource(R.drawable.ic_vu_logo),
+                    fallback = painterResource(R.drawable.ic_vu_logo),
                     contentDescription = "Virtual University Logo",
                     contentScale = ContentScale.Fit,
                     modifier = Modifier

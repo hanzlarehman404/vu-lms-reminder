@@ -1,0 +1,45 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp"
+    android:height="96dp"
+    android:viewportWidth="96"
+    android:viewportHeight="96">
+    <!-- Circular Shield Background in VU Blue -->
+    <path
+        android:fillColor="#0A3060"
+        android:pathData="M48,6 C71.196,6 90,24.804 90,48 C90,71.196 71.196,90 48,90 C24.804,90 6,71.196 6,48 C6,24.804 24.804,6 48,6 Z" />
+
+    <!-- Gold Accent Ring -->
+    <path
+        android:strokeColor="#E5A823"
+        android:strokeWidth="2.5"
+        android:pathData="M48,11 C68.435,11 85,27.565 85,48 C85,68.435 68.435,85 48,85 C27.565,85 11,68.435 11,48 C11,27.565 27.565,11 48,11 Z" />
+
+    <!-- Academic Mortarboard Cap (Gold/White) -->
+    <path
+        android:fillColor="#E5A823"
+        android:pathData="M48,24 L74,37 L48,50 L22,37 Z" />
+
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M32,43 L32,54 C32,60 48,64 48,64 C48,64 64,60 64,54 L64,43 L48,51 Z" />
+
+    <!-- Tassel -->
+    <path
+        android:strokeColor="#FFD54F"
+        android:strokeWidth="2"
+        android:pathData="M70,39 L74,52" />
+    <path
+        android:fillColor="#FFD54F"
+        android:pathData="M74,52 C75.5,52 76,54 75,56 C74,57 72,56 73,54 Z" />
+
+    <!-- "VU" Monogram in Gold -->
+    <!-- Letter V -->
+    <path
+        android:fillColor="#E5A823"
+        android:pathData="M34,68 L39,68 L43,80 L39.5,80 L37,72.5 L34.5,80 L31,80 Z" />
+
+    <!-- Letter U -->
+    <path
+        android:fillColor="#E5A823"
+        android:pathData="M53,68 L57,68 L57,75.5 C57,77.5 58,78.5 60,78.5 C62,78.5 63,77.5 63,75.5 L63,68 L67,68 L67,76 C67,79.5 64.5,81.5 60,81.5 C55.5,81.5 53,79.5 53,76 Z" />
+</vector>

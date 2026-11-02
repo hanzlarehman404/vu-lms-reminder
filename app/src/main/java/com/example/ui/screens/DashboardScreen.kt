@@ -28,6 +28,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.painterResource
+import com.example.R
 import coil.compose.AsyncImage
 import com.example.data.model.ActivityEntity
 import com.example.ui.components.ActivityCard
@@ -172,9 +174,12 @@ fun DashboardScreen(
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        // Official VU Logo in Top Bar
+                        // Official VU Logo in Top Bar with bundled vector fallback
                         AsyncImage(
                             model = "https://vulms.vu.edu.pk/App_Themes/Default/Images/logos/logo-1.png",
+                            placeholder = painterResource(R.drawable.ic_vu_logo),
+                            error = painterResource(R.drawable.ic_vu_logo),
+                            fallback = painterResource(R.drawable.ic_vu_logo),
                             contentDescription = "VU Logo",
                             contentScale = ContentScale.Fit,
                             modifier = Modifier

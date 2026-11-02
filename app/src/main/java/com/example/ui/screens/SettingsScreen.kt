@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import coil.compose.AsyncImage
 import com.example.data.local.PreferencesManager
 import com.example.ui.components.PrivacyDisclaimerDialog
@@ -554,6 +555,9 @@ fun SettingsScreen(
                         ) {
                             AsyncImage(
                                 model = "https://avatars.githubusercontent.com/u/115634418?v=4",
+                                placeholder = rememberVectorPainter(Icons.Default.Person),
+                                error = rememberVectorPainter(Icons.Default.Person),
+                                fallback = rememberVectorPainter(Icons.Default.Person),
                                 contentDescription = "Hanzla Rehman",
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier

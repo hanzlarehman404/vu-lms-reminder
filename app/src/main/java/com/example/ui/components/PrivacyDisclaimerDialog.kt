@@ -24,6 +24,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.res.painterResource
+import com.example.R
 import coil.compose.AsyncImage
 import com.example.ui.theme.VuGreenPrimary
 import com.example.ui.theme.VuInfoCyan
@@ -53,9 +55,12 @@ fun PrivacyDisclaimerDialog(
                     .verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Official VU Logo header
+                // Official VU Logo header with bundled vector fallback
                 AsyncImage(
                     model = "https://vulms.vu.edu.pk/App_Themes/Default/Images/logos/logo-1.png",
+                    placeholder = painterResource(R.drawable.ic_vu_logo),
+                    error = painterResource(R.drawable.ic_vu_logo),
+                    fallback = painterResource(R.drawable.ic_vu_logo),
                     contentDescription = "VU Logo",
                     modifier = Modifier
                         .height(48.dp)
