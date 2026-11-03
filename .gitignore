@@ -19,6 +19,9 @@ debug.keystore
 debug.keystore.base64
 *.jks
 *.keystore
+debug.keystore.base64
+signing-cert.pem
+signing-key-sha256.txt
 README.md
 /.github
 /.aistudio
