@@ -10,6 +10,7 @@
     "Added quiz and assignment tracking"
   ],
   "downloadUrl": "https://github.com/hanzlarehman404/vu-lms-reminder/releases/download/v1.0.0/vu-lms-reminder-app-v1.0.0.apk",
-  "sha256": "",
-  "publishedAt": "2026-11-01T00:00:00Z"
+  "sha256": "66db0530c949cd67d07ee5628b2c807dae74881126756bcb72d0dd3400fade32",
+  "certificate_sha256":"27:AD:82:EF:6C:AA:E3:B7:0D:2C:A3:D9:F8:45:E2:9B:AA:04:C0:A4:5D:2A:EE:F7:AC:ED:64:24:6B:0F:99:74",
+  "publishedAt": "2026-11-03T00:00:00Z"
 }
