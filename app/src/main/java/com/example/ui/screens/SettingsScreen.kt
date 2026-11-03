@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import coil.compose.AsyncImage
 import com.example.data.local.PreferencesManager
+import com.example.ui.components.AppDocsDialog
 import com.example.ui.components.PrivacyDisclaimerDialog
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.ManualUpdateResult
@@ -46,6 +47,7 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     var showPrivacyDialog by remember { mutableStateOf(false) }
+    var showDocsDialog by remember { mutableStateOf(false) }
     var showResetConfirmDialog by remember { mutableStateOf(false) }
 
     var notificationsEnabled by remember { mutableStateOf(prefs.isNotificationsEnabled()) }
@@ -53,9 +55,12 @@ fun SettingsScreen(
     var alarmSoundEnabled by remember { mutableStateOf(prefs.isAlarmSoundEnabled()) }
     var vibrationEnabled by remember { mutableStateOf(prefs.isVibrationEnabled()) }
     var nextDayRoutineEnabled by remember { mutableStateOf(prefs.isNextDayRoutineEnabled()) }
+    var middayRoutineEnabled by remember { mutableStateOf(prefs.isMiddayRoutineEnabled()) }
 
     var morningTime by remember { mutableStateOf(prefs.getMorningSyncTime()) }
+    var middayTime by remember { mutableStateOf(prefs.getMiddayTime()) }
     var eveningTime by remember { mutableStateOf(prefs.getEveningReminderTime()) }
+    var notificationRingtone by remember { mutableStateOf(prefs.getNotificationRingtone()) }
     var selectedTheme by remember { mutableStateOf(prefs.getAppTheme()) }
 
     fun saveNotifSettings() {
@@ -69,6 +74,10 @@ fun SettingsScreen(
 
     if (showPrivacyDialog) {
         PrivacyDisclaimerDialog(onAccept = { showPrivacyDialog = false })
+    }
+
+    if (showDocsDialog) {
+        AppDocsDialog(onDismiss = { showDocsDialog = false })
     }
 
     if (showResetConfirmDialog) {
@@ -191,11 +200,39 @@ fun SettingsScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = "Settings & Routine",
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = VuGreenPrimary.copy(alpha = 0.12f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, VuGreenPrimary.copy(alpha = 0.3f)),
+                            modifier = Modifier.padding(end = 10.dp)
+                        ) {
+                            Text(
+                                text = "🎓 VU",
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 12.sp,
+                                color = VuGreenPrimary,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "Settings & Routine",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 17.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("⚙️", fontSize = 16.sp)
+                            }
+                            Text(
+                                text = "Sync schedules, alerts & transparency",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
             )
@@ -271,7 +308,7 @@ fun SettingsScreen(
                 }
             }
 
-            // Routine & Sync Schedule (Morning Wake Up & Evening Last Reminder)
+            // Routine & Sync Schedule (Morning Wake Up, Mid-Day Check & Evening Last Reminder)
             item {
                 Card(
                     shape = RoundedCornerShape(16.dp),
@@ -294,7 +331,7 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.height(10.dp))
 
                         Text(
-                            text = "⚠️ Notice: At these two times, please do not work on VU LMS in your web browser, as you will be logged out of your active browser session exactly at these two sync times.",
+                            text = "⚠️ Notice: At scheduled sync times, please avoid active tests/sessions in your web browser, as simultaneous requests may invalidate your browser session.",
                             fontSize = 12.sp,
                             color = VuWarningAmber,
                             fontWeight = FontWeight.Medium,
@@ -313,7 +350,7 @@ fun SettingsScreen(
                                     selected = morningTime == t,
                                     onClick = {
                                         morningTime = t
-                                        prefs.setRoutineTimes(morningTime, eveningTime)
+                                        prefs.setRoutineTimes(morningTime, middayTime, eveningTime)
                                     },
                                     label = { Text(t, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                                     shape = RoundedCornerShape(8.dp)
@@ -323,9 +360,46 @@ fun SettingsScreen(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
+                        // Mid-Day Check Routine Time
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("2. Mid-Day Activity Check:", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text("Reminds: 'Have you done all of your available activities?'", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Switch(
+                                checked = middayRoutineEnabled,
+                                onCheckedChange = {
+                                    middayRoutineEnabled = it
+                                    prefs.setMiddayRoutineEnabled(it)
+                                }
+                            )
+                        }
+                        if (middayRoutineEnabled) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf("13:00", "14:00", "15:00").forEach { t ->
+                                    FilterChip(
+                                        selected = middayTime == t,
+                                        onClick = {
+                                            middayTime = t
+                                            prefs.setRoutineTimes(morningTime, middayTime, eveningTime)
+                                        },
+                                        label = { Text(t, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
                         // Evening Last Reminder Time
-                        Text("2. Evening Last Reminder Time:", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        Text("App resyncs and rings full-screen alarms for remaining activities due today.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("3. Evening Last Reminder Time:", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("App resyncs and rings urgent reminders for remaining activities due today.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(modifier = Modifier.height(6.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOf("20:00", "21:00", "22:00").forEach { t ->
@@ -333,7 +407,7 @@ fun SettingsScreen(
                                     selected = eveningTime == t,
                                     onClick = {
                                         eveningTime = t
-                                        prefs.setRoutineTimes(morningTime, eveningTime)
+                                        prefs.setRoutineTimes(morningTime, middayTime, eveningTime)
                                     },
                                     label = { Text(t, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                                     shape = RoundedCornerShape(8.dp)
@@ -388,7 +462,10 @@ fun SettingsScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Enable Notifications", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Enable Notifications", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                Text("Master toggle for all alerts and briefings", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                             Switch(
                                 checked = notificationsEnabled,
                                 onCheckedChange = {
@@ -398,14 +475,21 @@ fun SettingsScreen(
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Full-Screen Alarm on Due Date", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Full-Screen Alarm on Due Date", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                Text(
+                                    text = if (urgentAlarmEnabled) "Wakes screen with full alarm overlay 2h before deadline." else "Off: Shows regular heads-up notification in shade instead.",
+                                    fontSize = 11.sp,
+                                    color = if (urgentAlarmEnabled) VuSuccessMint else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                             Switch(
                                 checked = urgentAlarmEnabled,
                                 onCheckedChange = {
@@ -415,14 +499,21 @@ fun SettingsScreen(
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Alarm Audio Ringtone", fontSize = 13.sp)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Alarm Audio Ringtone", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                Text(
+                                    text = if (alarmSoundEnabled) "Plays audible sound for alarms and alerts." else "Off: Silent vibration only.",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                             Switch(
                                 checked = alarmSoundEnabled,
                                 onCheckedChange = {
@@ -432,14 +523,36 @@ fun SettingsScreen(
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(8.dp))
+                        if (alarmSoundEnabled) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Notification Sound Tone:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf("alarm" to "Alarm Tone", "notification" to "Notification Sound", "chime" to "Gentle Chime").forEach { (key, label) ->
+                                    FilterChip(
+                                        selected = notificationRingtone == key,
+                                        onClick = {
+                                            notificationRingtone = key
+                                            prefs.setNotificationRingtone(key)
+                                        },
+                                        label = { Text(label, fontSize = 11.sp, fontWeight = FontWeight.Medium) },
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Vibrate on Alert", fontSize = 13.sp)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Vibrate on Alert", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                Text("Haptic vibration pattern on alarms", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                             Switch(
                                 checked = vibrationEnabled,
                                 onCheckedChange = {
@@ -523,7 +636,7 @@ fun SettingsScreen(
                             } else {
                                 Icon(Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Check for Updates (v1.0.0)", fontSize = 12.sp)
+                                Text("Check for Updates (v2.0.0)", fontSize = 12.sp)
                             }
                         }
 
@@ -535,6 +648,18 @@ fun SettingsScreen(
                             Icon(Icons.Default.Security, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("Privacy & Open Source Transparency", fontSize = 12.sp)
+                        }
+
+                        OutlinedButton(
+                            onClick = { showDocsDialog = true },
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("view_docs_details_button")
+                        ) {
+                            Icon(Icons.Default.MenuBook, contentDescription = null, modifier = Modifier.size(16.dp), tint = VuInfoCyan)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("View Documentation & Details", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
                         }
                     }
                 }

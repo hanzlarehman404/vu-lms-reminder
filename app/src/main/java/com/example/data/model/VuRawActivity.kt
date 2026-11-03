@@ -78,6 +78,8 @@ data class VuRawActivity(
                         cal.set(java.util.Calendar.MONTH, month)
                         cal.set(java.util.Calendar.DAY_OF_MONTH, day)
                         if (isEnd) {
+                            // FullCalendar sends exclusive end dates (e.g. "2026,11,06" means deadline is 2026,11,05 23:59:59)
+                            cal.add(java.util.Calendar.DAY_OF_MONTH, -1)
                             cal.set(java.util.Calendar.HOUR_OF_DAY, 23)
                             cal.set(java.util.Calendar.MINUTE, 59)
                             cal.set(java.util.Calendar.SECOND, 59)
@@ -105,6 +107,8 @@ data class VuRawActivity(
                         val cal = java.util.Calendar.getInstance()
                         cal.time = parsed
                         if (isEnd && !cleaned.contains(":")) {
+                            // Subtract 1 day for date-only exclusive end dates
+                            cal.add(java.util.Calendar.DAY_OF_MONTH, -1)
                             cal.set(java.util.Calendar.HOUR_OF_DAY, 23)
                             cal.set(java.util.Calendar.MINUTE, 59)
                             cal.set(java.util.Calendar.SECOND, 59)

@@ -12,5 +12,7 @@ data class AppUpdateInfo(
     @Json(name = "releaseName") val releaseName: String = "",
     @Json(name = "releaseNotes") val releaseNotes: List<String> = emptyList(),
     @Json(name = "downloadUrl") val downloadUrl: String = "",
+    @Json(name = "sha256") val sha256: String = "",
+    @Json(name = "certificate_sha256") val certificateSha256: String = "",
     @Json(name = "publishedAt") val publishedAt: String = ""
 )

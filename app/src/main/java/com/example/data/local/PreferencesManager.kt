@@ -32,13 +32,16 @@ class PreferencesManager(context: Context) {
     fun getLastSyncTime(): Long = prefs.getLong(KEY_LAST_SYNC, 0L)
 
     fun getMorningSyncTime(): String = prefs.getString(KEY_MORNING_TIME, "09:00") ?: "09:00"
+    fun getMiddayTime(): String = prefs.getString(KEY_MIDDAY_TIME, "14:00") ?: "14:00"
     fun getEveningReminderTime(): String = prefs.getString(KEY_EVENING_TIME, "21:00") ?: "21:00"
     fun isNextDayRoutineEnabled(): Boolean = prefs.getBoolean(KEY_NEXT_DAY_ROUTINE, true)
+    fun isMiddayRoutineEnabled(): Boolean = prefs.getBoolean(KEY_MIDDAY_ROUTINE, true)
 
     fun isNotificationsEnabled(): Boolean = prefs.getBoolean(KEY_NOTIFICATIONS_ENABLED, true)
     fun isUrgentAlarmEnabled(): Boolean = prefs.getBoolean(KEY_URGENT_ALARM_ENABLED, true)
     fun isAlarmSoundEnabled(): Boolean = prefs.getBoolean(KEY_ALARM_SOUND, true)
     fun isVibrationEnabled(): Boolean = prefs.getBoolean(KEY_VIBRATION, true)
+    fun getNotificationRingtone(): String = prefs.getString(KEY_NOTIFICATION_RINGTONE, "alarm") ?: "alarm"
     fun getAppTheme(): String = prefs.getString(KEY_APP_THEME, "system") ?: "system"
 
     fun saveLogin(studentId: String, pass: String) {
@@ -78,8 +81,24 @@ class PreferencesManager(context: Context) {
             .apply()
     }
 
+    fun setRoutineTimes(morningTime: String, middayTime: String, eveningTime: String) {
+        prefs.edit()
+            .putString(KEY_MORNING_TIME, morningTime)
+            .putString(KEY_MIDDAY_TIME, middayTime)
+            .putString(KEY_EVENING_TIME, eveningTime)
+            .apply()
+    }
+
+    fun setMiddayRoutineEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_MIDDAY_ROUTINE, enabled).apply()
+    }
+
     fun setNextDayRoutineEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_NEXT_DAY_ROUTINE, enabled).apply()
+    }
+
+    fun setNotificationRingtone(ringtone: String) {
+        prefs.edit().putString(KEY_NOTIFICATION_RINGTONE, ringtone).apply()
     }
 
     fun setNotificationSettings(
@@ -109,13 +128,16 @@ class PreferencesManager(context: Context) {
         private const val KEY_LAST_SYNC = "last_sync_time"
 
         private const val KEY_MORNING_TIME = "routine_morning_time" // e.g. "09:00"
+        private const val KEY_MIDDAY_TIME = "routine_midday_time" // e.g. "14:00"
         private const val KEY_EVENING_TIME = "routine_evening_time" // e.g. "21:00"
         private const val KEY_NEXT_DAY_ROUTINE = "next_day_routine_enabled"
+        private const val KEY_MIDDAY_ROUTINE = "midday_routine_enabled"
 
         private const val KEY_NOTIFICATIONS_ENABLED = "notif_enabled"
         private const val KEY_URGENT_ALARM_ENABLED = "urgent_alarm_enabled"
         private const val KEY_ALARM_SOUND = "alarm_sound_enabled"
         private const val KEY_VIBRATION = "alarm_vibrate_enabled"
+        private const val KEY_NOTIFICATION_RINGTONE = "notification_ringtone_type"
         private const val KEY_APP_THEME = "app_theme_mode" // "system", "light", "dark"
     }
 }

@@ -20,13 +20,21 @@ class AlarmScheduler(private val context: Context) {
             return
         }
 
-        scheduleDailyRoutine(prefs.getMorningSyncTime(), REQUEST_CODE_MORNING, isEvening = false)
-        scheduleDailyRoutine(prefs.getEveningReminderTime(), REQUEST_CODE_EVENING, isEvening = true)
+        scheduleDailyRoutine(prefs.getMorningSyncTime(), REQUEST_CODE_MORNING, AlarmBroadcastReceiver.ACTION_MORNING_ROUTINE)
+        if (prefs.isMiddayRoutineEnabled()) {
+            scheduleDailyRoutine(prefs.getMiddayTime(), REQUEST_CODE_MIDDAY, AlarmBroadcastReceiver.ACTION_MIDDAY_ROUTINE)
+        }
+        scheduleDailyRoutine(prefs.getEveningReminderTime(), REQUEST_CODE_EVENING, AlarmBroadcastReceiver.ACTION_EVENING_ROUTINE)
     }
 
-    private fun scheduleDailyRoutine(timeStr: String, requestCode: Int, isEvening: Boolean) {
+    private fun scheduleDailyRoutine(timeStr: String, requestCode: Int, action: String) {
         val parts = timeStr.split(":")
-        val hour = parts.getOrNull(0)?.toIntOrNull() ?: if (isEvening) 21 else 9
+        val defaultHour = when (requestCode) {
+            REQUEST_CODE_MIDDAY -> 14
+            REQUEST_CODE_EVENING -> 21
+            else -> 9
+        }
+        val hour = parts.getOrNull(0)?.toIntOrNull() ?: defaultHour
         val minute = parts.getOrNull(1)?.toIntOrNull() ?: 0
 
         val cal = Calendar.getInstance().apply {
@@ -40,7 +48,7 @@ class AlarmScheduler(private val context: Context) {
         }
 
         val intent = Intent(context, AlarmBroadcastReceiver::class.java).apply {
-            action = if (isEvening) AlarmBroadcastReceiver.ACTION_EVENING_ROUTINE else AlarmBroadcastReceiver.ACTION_MORNING_ROUTINE
+            this.action = action
         }
 
         val pendingIntent = PendingIntent.getBroadcast(
@@ -64,7 +72,7 @@ class AlarmScheduler(private val context: Context) {
                     pendingIntent
                 )
             }
-            Log.d(TAG, "Scheduled routine (evening=$isEvening) at ${cal.time}")
+            Log.d(TAG, "Scheduled routine (action=$action) at ${cal.time}")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to schedule routine", e)
         }
@@ -128,6 +136,17 @@ class AlarmScheduler(private val context: Context) {
         )
         morningPi?.let { alarmManager.cancel(it) }
 
+        val middayIntent = Intent(context, AlarmBroadcastReceiver::class.java).apply {
+            action = AlarmBroadcastReceiver.ACTION_MIDDAY_ROUTINE
+        }
+        val middayPi = PendingIntent.getBroadcast(
+            context,
+            REQUEST_CODE_MIDDAY,
+            middayIntent,
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+        )
+        middayPi?.let { alarmManager.cancel(it) }
+
         val eveningIntent = Intent(context, AlarmBroadcastReceiver::class.java).apply {
             action = AlarmBroadcastReceiver.ACTION_EVENING_ROUTINE
         }
@@ -174,6 +193,7 @@ class AlarmScheduler(private val context: Context) {
     companion object {
         private const val TAG = "AlarmScheduler"
         const val REQUEST_CODE_MORNING = 101
+        const val REQUEST_CODE_MIDDAY = 103
         const val REQUEST_CODE_EVENING = 102
     }
 }

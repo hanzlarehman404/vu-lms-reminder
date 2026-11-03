@@ -32,6 +32,7 @@ import androidx.compose.ui.res.painterResource
 import com.example.R
 import coil.compose.AsyncImage
 import com.example.ui.components.PrivacyDisclaimerDialog
+import com.example.ui.components.SecurityVerificationDialog
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.LoginUiState
 
@@ -47,10 +48,22 @@ fun LoginScreen(
     var studentId by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
+    var showSecurityVerification by remember { mutableStateOf(false) }
+    var validationError by remember { mutableStateOf<String?>(null) }
     val focusManager = LocalFocusManager.current
 
     if (!isPrivacyAccepted) {
         PrivacyDisclaimerDialog(onAccept = onAcceptPrivacy)
+    }
+
+    if (showSecurityVerification) {
+        SecurityVerificationDialog(
+            onDismiss = { showSecurityVerification = false },
+            onContinueSignIn = {
+                showSecurityVerification = false
+                onLogin(studentId, password)
+            }
+        )
     }
 
     Scaffold(
@@ -191,7 +204,18 @@ fun LoginScreen(
                             keyboardActions = KeyboardActions(
                                 onDone = {
                                     focusManager.clearFocus()
-                                    onLogin(studentId, password)
+                                    when {
+                                        studentId.isBlank() -> {
+                                            validationError = "Please enter your VU Student ID (e.g. bc240417499)"
+                                        }
+                                        password.isBlank() -> {
+                                            validationError = "Please enter your LMS password"
+                                        }
+                                        else -> {
+                                            validationError = null
+                                            showSecurityVerification = true
+                                        }
+                                    }
                                 }
                             ),
                             shape = RoundedCornerShape(10.dp),
@@ -239,25 +263,57 @@ fun LoginScreen(
                             }
                         }
 
+                        if (validationError != null) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.errorContainer
+                            ) {
+                                Text(
+                                    text = validationError!!,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.padding(10.dp)
+                                )
+                            }
+                        }
+
                         Spacer(modifier = Modifier.height(18.dp))
 
                         Button(
                             onClick = {
                                 focusManager.clearFocus()
-                                onLogin(studentId, password)
+                                when {
+                                    studentId.isBlank() -> {
+                                        validationError = "Please enter your VU Student ID (e.g. bc240417499)"
+                                    }
+                                    password.isBlank() -> {
+                                        validationError = "Please enter your LMS password"
+                                    }
+                                    else -> {
+                                        validationError = null
+                                        showSecurityVerification = true
+                                    }
+                                }
                             },
                             enabled = loginState !is LoginUiState.Loading,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(48.dp)
+                                .height(50.dp)
                                 .testTag("login_button"),
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = VuInfoCyan)
                         ) {
+                            Icon(
+                                Icons.Default.Lock,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Sign In & Sync Activities",
+                                text = "Verify & Sign In",
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp,
+                                fontSize = 15.sp,
                                 color = Color.White
                             )
                         }

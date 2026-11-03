@@ -58,6 +58,26 @@ class AlarmBroadcastReceiver : BroadcastReceiver() {
                         AlarmScheduler(context).scheduleRoutines()
                     }
 
+                    ACTION_MIDDAY_ROUTINE -> {
+                        Log.d(TAG, "Executing Mid-Day Check Routine...")
+                        try {
+                            repository.syncActivities()
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Midday sync error", e)
+                        }
+
+                        val available = db.activityDao().getAvailablePendingActivitiesSync(now)
+                        val todayDueCount = available.count { it.isDueToday(now) }
+
+                        notificationHelper.showMiddayCheckNotification(
+                            availableActivitiesCount = available.size,
+                            todayDueCount = todayDueCount
+                        )
+
+                        // Reschedule for next day
+                        AlarmScheduler(context).scheduleRoutines()
+                    }
+
                     ACTION_EVENING_ROUTINE -> {
                         Log.d(TAG, "Executing Evening Last Reminder Routine...")
                         // Sync and auto-mark completed
@@ -104,6 +124,7 @@ class AlarmBroadcastReceiver : BroadcastReceiver() {
     companion object {
         private const val TAG = "AlarmBroadcastReceiver"
         const val ACTION_MORNING_ROUTINE = "com.example.vulms.ACTION_MORNING_ROUTINE"
+        const val ACTION_MIDDAY_ROUTINE = "com.example.vulms.ACTION_MIDDAY_ROUTINE"
         const val ACTION_EVENING_ROUTINE = "com.example.vulms.ACTION_EVENING_ROUTINE"
         const val ACTION_ACTIVITY_ALARM = "com.example.vulms.ACTION_ACTIVITY_ALARM"
 
