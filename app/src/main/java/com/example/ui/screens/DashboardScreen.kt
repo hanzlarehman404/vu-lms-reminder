@@ -395,11 +395,18 @@ fun DashboardScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         StatPill(
-                            label = "All Pending",
-                            count = stats.totalPending,
-                            isSelected = selectedCategory == null || selectedCategory == "All",
-                            color = VuInfoCyan,
+                            label = "All",
+                            count = stats.allCount,
+                            isSelected = selectedCategory == "All",
+                            color = MaterialTheme.colorScheme.primary,
                             onClick = { onCategorySelected("All") }
+                        )
+                        StatPill(
+                            label = "Pending",
+                            count = stats.totalPending,
+                            isSelected = selectedCategory == null || selectedCategory == "Pending",
+                            color = VuInfoCyan,
+                            onClick = { onCategorySelected("Pending") }
                         )
                         StatPill(
                             label = "Due Today",
@@ -466,7 +473,8 @@ fun DashboardScreen(
             // Categories Filter with Emojis
             item {
                 val categories = listOf(
-                    "All" to "All",
+                    "Pending" to "⏳ Pending",
+                    "All" to "📋 All Activities",
                     "Assignment" to "📝 Assignments",
                     "Quiz" to "⚡ Quizzes",
                     "GDB" to "💬 GDBs",
@@ -477,9 +485,10 @@ fun DashboardScreen(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     items(categories) { (catKey, label) ->
+                        val isSelected = (selectedCategory == catKey) || (catKey == "Pending" && selectedCategory == null)
                         FilterChip(
-                            selected = (selectedCategory == catKey) || (catKey == "All" && selectedCategory == null),
-                            onClick = { onCategorySelected(if (catKey == "All") null else catKey) },
+                            selected = isSelected,
+                            onClick = { onCategorySelected(catKey) },
                             label = { Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
                             shape = RoundedCornerShape(8.dp)
                         )

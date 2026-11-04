@@ -25,6 +25,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import coil.compose.AsyncImage
+import androidx.compose.ui.res.painterResource
+import com.example.R
 import com.example.data.local.PreferencesManager
 import com.example.ui.components.AppDocsDialog
 import com.example.ui.components.PrivacyDisclaimerDialog
@@ -62,6 +64,37 @@ fun SettingsScreen(
     var eveningTime by remember { mutableStateOf(prefs.getEveningReminderTime()) }
     var notificationRingtone by remember { mutableStateOf(prefs.getNotificationRingtone()) }
     var selectedTheme by remember { mutableStateOf(prefs.getAppTheme()) }
+
+    var activeRingtone by remember { mutableStateOf<android.media.Ringtone?>(null) }
+    var isPlayingPreview by remember { mutableStateOf(false) }
+
+    fun playTonePreview(toneKey: String) {
+        try {
+            activeRingtone?.stop()
+            val uri: Uri = when (toneKey) {
+                "alarm" -> android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM)
+                    ?: android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
+                "chime" -> android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
+                else -> android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
+            }
+            val rt = android.media.RingtoneManager.getRingtone(context, uri)
+            if (rt != null) {
+                activeRingtone = rt
+                isPlayingPreview = true
+                rt.play()
+            }
+        } catch (ignored: Exception) {
+            isPlayingPreview = false
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            try {
+                activeRingtone?.stop()
+            } catch (ignored: Exception) {}
+        }
+    }
 
     fun saveNotifSettings() {
         prefs.setNotificationSettings(
@@ -201,31 +234,26 @@ fun SettingsScreen(
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = VuGreenPrimary.copy(alpha = 0.12f),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, VuGreenPrimary.copy(alpha = 0.3f)),
-                            modifier = Modifier.padding(end = 10.dp)
-                        ) {
-                            Text(
-                                text = "🎓 VU",
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 12.sp,
-                                color = VuGreenPrimary,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
-                        }
+                        // Official VU Logo in Top Bar with bundled vector fallback
+                        AsyncImage(
+                            model = "https://vulms.vu.edu.pk/App_Themes/Default/Images/logos/logo-1.png",
+                            placeholder = painterResource(R.drawable.ic_vu_logo),
+                            error = painterResource(R.drawable.ic_vu_logo),
+                            fallback = painterResource(R.drawable.ic_vu_logo),
+                            contentDescription = "VU Logo",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .height(32.dp)
+                                .aspectRatio(16f / 10f)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
                         Column {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "Settings & Routine",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 17.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("⚙️", fontSize = 16.sp)
-                            }
+                            Text(
+                                text = "Settings & Routine",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
                             Text(
                                 text = "Sync schedules, alerts & transparency",
                                 fontSize = 11.sp,
@@ -507,9 +535,9 @@ fun SettingsScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("Alarm Audio Ringtone", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                Text("Alarm & Notification Audio", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                                 Text(
-                                    text = if (alarmSoundEnabled) "Plays audible sound for alarms and alerts." else "Off: Silent vibration only.",
+                                    text = if (alarmSoundEnabled) "Plays audible sound for alarms and scheduled reminders." else "Off: Silent alerts (vibration only).",
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -519,25 +547,117 @@ fun SettingsScreen(
                                 onCheckedChange = {
                                     alarmSoundEnabled = it
                                     saveNotifSettings()
+                                    if (!it) {
+                                        activeRingtone?.stop()
+                                        isPlayingPreview = false
+                                    }
                                 }
                             )
                         }
 
                         if (alarmSoundEnabled) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text("Notification Sound Tone:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                listOf("alarm" to "Alarm Tone", "notification" to "Notification Sound", "chime" to "Gentle Chime").forEach { (key, label) ->
-                                    FilterChip(
-                                        selected = notificationRingtone == key,
-                                        onClick = {
-                                            notificationRingtone = key
-                                            prefs.setNotificationRingtone(key)
-                                        },
-                                        label = { Text(label, fontSize = 11.sp, fontWeight = FontWeight.Medium) },
-                                        shape = RoundedCornerShape(8.dp)
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Select Ringtone / Tone:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                FilledTonalButton(
+                                    onClick = {
+                                        if (isPlayingPreview) {
+                                            activeRingtone?.stop()
+                                            isPlayingPreview = false
+                                        } else {
+                                            playTonePreview(notificationRingtone)
+                                        }
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.height(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (isPlayingPreview) Icons.Default.Stop else Icons.Default.VolumeUp,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp)
                                     )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (isPlayingPreview) "Stop Preview" else "Test Tone",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            val toneOptions = listOf(
+                                Triple("alarm", "Alarm Tone", "High-urgency loud wake tone"),
+                                Triple("notification", "Notification Sound", "Standard Android reminder tone"),
+                                Triple("chime", "Gentle Chime", "Soft chime for quiet environments")
+                            )
+
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                toneOptions.forEach { (key, title, subtitle) ->
+                                    val isSelected = notificationRingtone == key
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                        border = androidx.compose.foundation.BorderStroke(
+                                            width = if (isSelected) 1.5.dp else 1.dp,
+                                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                                        ),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                notificationRingtone = key
+                                                prefs.setNotificationRingtone(key)
+                                                playTonePreview(key)
+                                            }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            RadioButton(
+                                                selected = isSelected,
+                                                onClick = {
+                                                    notificationRingtone = key
+                                                    prefs.setNotificationRingtone(key)
+                                                    playTonePreview(key)
+                                                },
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = title,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                                Text(
+                                                    text = subtitle,
+                                                    fontSize = 10.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                            if (isSelected && isPlayingPreview) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = VuSuccessMint.copy(alpha = 0.15f)
+                                                ) {
+                                                    Text(
+                                                        text = "Playing...",
+                                                        fontSize = 10.sp,
+                                                        color = VuSuccessMint,
+                                                        fontWeight = FontWeight.Bold,
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -636,7 +756,7 @@ fun SettingsScreen(
                             } else {
                                 Icon(Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Check for Updates (v2.0.0)", fontSize = 12.sp)
+                                Text("Check for Updates (v${com.example.BuildConfig.VERSION_NAME})", fontSize = 12.sp)
                             }
                         }
 
@@ -657,9 +777,9 @@ fun SettingsScreen(
                                 .fillMaxWidth()
                                 .testTag("view_docs_details_button")
                         ) {
-                            Icon(Icons.Default.MenuBook, contentDescription = null, modifier = Modifier.size(16.dp), tint = VuInfoCyan)
+                            Icon(Icons.Default.MenuBook, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("View Documentation & Details", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+                            Text("View Documentation & Details", fontSize = 12.sp)
                         }
                     }
                 }

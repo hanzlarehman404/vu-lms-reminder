@@ -27,6 +27,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import coil.compose.AsyncImage
+import com.example.R
 import com.example.data.model.ActivityEntity
 import com.example.data.model.ActivityType
 import com.example.ui.components.ActivityDetailDialog
@@ -94,31 +98,26 @@ fun CalendarScreen(
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = VuNavy.copy(alpha = 0.12f),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, VuNavy.copy(alpha = 0.3f)),
-                            modifier = Modifier.padding(end = 10.dp)
-                        ) {
-                            Text(
-                                text = "🎓 VU",
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 12.sp,
-                                color = VuNavy,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
-                        }
+                        // Official VU Logo in Top Bar with bundled vector fallback
+                        AsyncImage(
+                            model = "https://vulms.vu.edu.pk/App_Themes/Default/Images/logos/logo-1.png",
+                            placeholder = painterResource(R.drawable.ic_vu_logo),
+                            error = painterResource(R.drawable.ic_vu_logo),
+                            fallback = painterResource(R.drawable.ic_vu_logo),
+                            contentDescription = "VU Logo",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .height(32.dp)
+                                .aspectRatio(16f / 10f)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
                         Column {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "Activity Timeline Calendar",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 17.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("📅 ⏳", fontSize = 15.sp)
-                            }
+                            Text(
+                                text = "Activity Timeline",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
                             Text(
                                 text = "Official Semester Milestones & Exclusive Cutoffs",
                                 fontSize = 11.sp,

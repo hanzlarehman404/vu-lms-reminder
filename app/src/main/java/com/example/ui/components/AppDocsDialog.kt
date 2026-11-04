@@ -111,20 +111,58 @@ fun AppDocsDialog(
                         )
                     }
 
-                    // Section 2: Due Date Calculation (Exclusive End Dates)
+                    // Section 2: Smart Due Date Calculation & VU LMS Grace Period
                     DocSectionCard(
                         icon = Icons.Default.EventBusy,
-                        title = "2. Smart Due Date Calculation",
+                        title = "2. Smart Due Date Calculation & LMS Quirk",
                         iconColor = VuWarningAmber
                     ) {
-                        Text(
-                            text = "• In VU LMS calendar data, end dates are specified exclusively (e.g., \"end\": \"2026,11,06\" indicates the cutoff boundary).\n" +
-                                    "• The real, final submission deadline is 2026-11-05 at 23:59:59. On the 6th, the submission portal is closed.\n" +
-                                    "• This app automatically subtracts 1 day to present the genuine deadline, alerting you well before closing.",
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                text = "• In VU LMS calendar backend data, end dates are transmitted exclusively (for example: \"end\": \"2026,11,06\" specifies the exclusive cutoff boundary).\n" +
+                                        "• The actual final submission day is 2026-11-05 (closing at end of day). On the 6th, the regular portal deadline has passed.\n" +
+                                        "• VU LMS Reminder automatically adjusts this exclusive date by 1 day to show you the genuine, safe deadline so you submit well before cutoff.",
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            // Prominent Callout regarding LMS quirk
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = VuWarningAmber.copy(alpha = 0.12f),
+                                border = BorderStroke(1.dp, VuWarningAmber.copy(alpha = 0.4f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalAlignment = Alignment.Top
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Info,
+                                        contentDescription = null,
+                                        tint = VuWarningAmber,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column {
+                                        Text(
+                                            text = "Important Note: VU LMS Grace Submissions",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "Due to a known quirk / minor bug in the VU LMS portal system, some teachers or system scripts occasionally accept submissions even after the posted due date has elapsed. Always check your official VU LMS portal even after the due date, as you might still have a chance to submit your activity!",
+                                            fontSize = 11.sp,
+                                            lineHeight = 16.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     // Section 3: Notification Schema
@@ -140,25 +178,25 @@ fun AppDocsDialog(
                             )
                             RoutineItem(
                                 title = "🌤️ Mid-Day Check (e.g., 02:00 PM)",
-                                description = "Prompt check: \"Have you done all of your available activities?\" Keeps you accountable halfway through the day with quick LMS action buttons."
+                                description = "Midday accountability check: \"Have you done all of your available activities?\" Keeps you on track throughout the afternoon with quick LMS action buttons."
                             )
                             RoutineItem(
                                 title = "🌙 Evening Last Reminder (e.g., 09:00 PM)",
-                                description = "Critical sync & urgent notification for remaining tasks due before 11:59 PM so you never lose marks."
+                                description = "Critical sync & urgent notification for remaining tasks due before end of day so you never lose academic marks."
                             )
                         }
                     }
 
-                    // Section 4: Full-Screen Alarm vs Regular Notification
+                    // Section 4: Full-Screen Alarm vs Regular Notification & Tone
                     DocSectionCard(
                         icon = Icons.Default.Alarm,
                         title = "4. Full-Screen Alarm vs Regular Notifications",
                         iconColor = VuDangerRed
                     ) {
                         Text(
-                            text = "• Full-Screen Alarm ON: When an activity is due today (< 2 hours remaining), the app wakes the device screen with a dedicated full-screen alarm screen featuring Snooze (15m/30m), Mark as Done, and Open LMS.\n\n" +
-                                    "• Full-Screen Alarm OFF: If disabled, the app posts a standard high-priority heads-up notification in your Android notification shade with actionable buttons—without interrupting your current work.\n\n" +
-                                    "• Alarm Audio Ringtone: Controls whether audio sounds play during alerts. If disabled, alerts vibrate silently.",
+                            text = "• Full-Screen Alarm ON: When an activity is due today (< 2 hours remaining), the app wakes the device screen with a dedicated full-screen alarm overlay featuring Snooze (15m/30m), Mark as Done, and Direct LMS Launch.\n\n" +
+                                    "• Full-Screen Alarm OFF: If disabled, the app instead posts a standard high-priority heads-up notification in your Android notification shade with action buttons—letting you manage deadlines without interrupting what you're currently doing on your phone.\n\n" +
+                                    "• Alarm Audio Ringtone & Preview: Controls whether audible sound plays when reminders trigger. You can customize the tone (Alarm, Notification Sound, Gentle Chime, or System Default) and tap to hear an instant preview. If sound is switched off, reminders vibrate silently.",
                             fontSize = 13.sp,
                             lineHeight = 18.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant

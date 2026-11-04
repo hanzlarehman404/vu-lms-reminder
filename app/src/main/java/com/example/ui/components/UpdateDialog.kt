@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.example.BuildConfig
 import com.example.data.model.AppUpdateInfo
 import com.example.ui.theme.VuGreenPrimary
 import com.example.ui.theme.VuInfoCyan
@@ -32,7 +33,7 @@ fun UpdateDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    val currentVersionCode = 1 // current versionCode
+    val currentVersionCode = BuildConfig.VERSION_CODE
     val isForced = updateInfo.forceUpdate || (currentVersionCode < updateInfo.minimumSupportedVersion)
 
     Dialog(

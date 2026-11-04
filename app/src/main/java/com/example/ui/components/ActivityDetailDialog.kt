@@ -40,9 +40,14 @@ fun ActivityDetailDialog(
     onOpenLms: () -> Unit
 ) {
     val type = ActivityType.fromString(activity.activityType, activity.title)
-    val sdf = SimpleDateFormat("EEEE, dd MMM yyyy 'at' hh:mm a", Locale.getDefault())
+    val cal = java.util.Calendar.getInstance().apply { timeInMillis = activity.endDate }
+    val isEndOfDay = cal.get(java.util.Calendar.HOUR_OF_DAY) == 23 && cal.get(java.util.Calendar.MINUTE) >= 59
     val startStr = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(activity.startDate))
-    val endStr = sdf.format(Date(activity.endDate))
+    val endStr = if (isEndOfDay) {
+        SimpleDateFormat("EEEE, dd MMM yyyy (Final Due Day)", Locale.getDefault()).format(Date(activity.endDate))
+    } else {
+        SimpleDateFormat("EEEE, dd MMM yyyy 'at' hh:mm a", Locale.getDefault()).format(Date(activity.endDate))
+    }
 
     val now = System.currentTimeMillis()
     val remainingMillis = (activity.endDate - now).coerceAtLeast(0)

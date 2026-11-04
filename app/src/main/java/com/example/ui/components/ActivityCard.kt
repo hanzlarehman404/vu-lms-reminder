@@ -66,7 +66,13 @@ fun ActivityCard(
         else -> MaterialTheme.colorScheme.primary
     }
 
-    val dateStr = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date(activity.endDate))
+    val dateCalendar = java.util.Calendar.getInstance().apply { timeInMillis = activity.endDate }
+    val isEndOfDay = dateCalendar.get(java.util.Calendar.HOUR_OF_DAY) == 23 && dateCalendar.get(java.util.Calendar.MINUTE) >= 59
+    val dateStr = if (isEndOfDay) {
+        SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(activity.endDate))
+    } else {
+        SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date(activity.endDate))
+    }
     val startDateStr = SimpleDateFormat("dd MMM", Locale.getDefault()).format(Date(activity.startDate))
 
     if (showConfirmDialog) {

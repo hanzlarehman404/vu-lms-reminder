@@ -3,6 +3,7 @@ package com.example.ui.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.BuildConfig
 import com.example.data.local.PreferencesManager
 import com.example.data.model.ActivityEntity
 import com.example.data.model.AppUpdateInfo
@@ -23,6 +24,8 @@ sealed class ManualUpdateResult {
 }
 
 data class DashboardStats(
+    val allCount: Int = 0,
+    val totalPending: Int = 0,
     val todayCount: Int = 0,
     val tomorrowCount: Int = 0,
     val thisWeekCount: Int = 0,
@@ -30,7 +33,6 @@ data class DashboardStats(
     val completedCount: Int = 0,
     val availableCount: Int = 0,
     val upcomingCount: Int = 0,
-    val totalPending: Int = 0,
     val nearestUpcoming: ActivityEntity? = null
 )
 
@@ -50,7 +52,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _selectedTab = MutableStateFlow(0) // 0: Dashboard, 1: Calendar, 2: Settings
     val selectedTab: StateFlow<Int> = _selectedTab.asStateFlow()
 
-    private val _selectedCategory = MutableStateFlow<String?>("All")
+    private val _selectedCategory = MutableStateFlow<String?>("Pending")
     val selectedCategory: StateFlow<String?> = _selectedCategory.asStateFlow()
 
     // Flag to separate Available vs Upcoming activities
@@ -89,6 +91,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val nearest = pendingAvailable.minByOrNull { it.endDate }
 
         DashboardStats(
+            allCount = available.size,
+            totalPending = pendingAvailable.size,
             todayCount = pendingAvailable.count { it.isDueToday(now) },
             tomorrowCount = pendingAvailable.count { it.isDueTomorrow(now) },
             thisWeekCount = pendingAvailable.count { it.isDueThisWeek(now) },
@@ -96,7 +100,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             completedCount = list.count { it.isCompleted },
             availableCount = available.size,
             upcomingCount = upcoming.size,
-            totalPending = pendingAvailable.size,
             nearestUpcoming = nearest
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DashboardStats())
@@ -118,7 +121,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             val matchesCategory = when (category) {
-                "All", null -> true
+                "All" -> true
+                "Pending", null -> !item.isCompleted
                 "Today" -> item.isDueToday(now) && !item.isCompleted
                 "Tomorrow" -> item.isDueTomorrow(now) && !item.isCompleted
                 "This Week" -> item.isDueThisWeek(now) && !item.isCompleted
@@ -241,12 +245,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             if (result.isSuccess) {
                 val info = result.getOrNull()
-                // Current versionCode is 1
-                if (info != null && info.versionCode > 1) {
+                val currentVersionCode = BuildConfig.VERSION_CODE
+                if (info != null && info.versionCode > currentVersionCode) {
                     _updateInfo.value = info
                 } else if (isManual) {
                     _manualUpdateResult.value = ManualUpdateResult.UpToDate(
-                        version = info?.version ?: "1.0.0",
+                        version = BuildConfig.VERSION_NAME,
                         releaseName = info?.releaseName.orEmpty()
                     )
                 }
