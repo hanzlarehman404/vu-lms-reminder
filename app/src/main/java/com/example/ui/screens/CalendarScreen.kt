@@ -47,10 +47,7 @@ fun CalendarScreen(
 ) {
     val context = LocalContext.current
     var selectedActivityForDetail by remember { mutableStateOf<ActivityEntity?>(null) }
-    var selectedFilter by remember { mutableStateOf("All") } // "All", "Active", "Upcoming", "Completed"
     var selectedMonth by remember { mutableStateOf("All Months") }
-
-    val now = System.currentTimeMillis()
     val monthFormat = remember { SimpleDateFormat("MMMM yyyy", Locale.getDefault()) }
 
     val distinctMonths = remember(activities) {
@@ -59,19 +56,11 @@ fun CalendarScreen(
             .distinct()
     }
 
-    val filteredList = remember(activities, selectedFilter, selectedMonth) {
+    val filteredList = remember(activities, selectedMonth) {
         activities.filter { act ->
-            val matchesTimeline = when (selectedFilter) {
-                "Active" -> act.isAvailable(now) && !act.isCompleted
-                "Upcoming" -> act.isUpcoming(now)
-                "Completed" -> act.isCompleted
-                else -> true
-            }
-            val matchesMonth = if (selectedMonth == "All Months") true
+            if (selectedMonth == "All Months") true
             else monthFormat.format(Date(act.endDate)) == selectedMonth ||
                  monthFormat.format(Date(act.startDate)) == selectedMonth
-
-            matchesTimeline && matchesMonth
         }.sortedBy { it.startDate }
     }
 
@@ -82,13 +71,6 @@ fun CalendarScreen(
             onToggleCompletion = { done ->
                 onToggleCompletion(selectedActivityForDetail!!.id, done)
                 selectedActivityForDetail = selectedActivityForDetail!!.copy(isCompleted = done)
-            },
-            onOpenLms = {
-                try {
-                    val url = selectedActivityForDetail!!.url.ifEmpty { "https://vulms.vu.edu.pk" }
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                    context.startActivity(intent)
-                } catch (ignored: Exception) {}
             }
         )
     }
@@ -137,25 +119,6 @@ fun CalendarScreen(
             contentPadding = PaddingValues(14.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Filter Pills: All, Active, Upcoming, Completed
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    val filters = listOf("All", "Active", "Upcoming", "Completed")
-                    filters.forEach { f ->
-                        FilterChip(
-                            selected = selectedFilter == f,
-                            onClick = { selectedFilter = f },
-                            label = { Text(f, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) },
-                            shape = RoundedCornerShape(8.dp)
-                        )
-                    }
-                }
-            }
 
             // Month Selector Pills
             if (distinctMonths.size > 1) {
@@ -221,14 +184,7 @@ fun CalendarScreen(
                 items(filteredList, key = { it.id }) { act ->
                     TimelineBarCard(
                         activity = act,
-                        onClick = { selectedActivityForDetail = act },
-                        onOpenLms = {
-                            try {
-                                val url = act.url.ifEmpty { "https://vulms.vu.edu.pk" }
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                context.startActivity(intent)
-                            } catch (ignored: Exception) {}
-                        }
+                        onClick = { selectedActivityForDetail = act }
                     )
                 }
             }
@@ -239,8 +195,7 @@ fun CalendarScreen(
 @Composable
 private fun TimelineBarCard(
     activity: ActivityEntity,
-    onClick: () -> Unit,
-    onOpenLms: () -> Unit
+    onClick: () -> Unit
 ) {
     val type = ActivityType.fromString(activity.activityType, activity.title)
     val now = System.currentTimeMillis()
@@ -386,22 +341,6 @@ private fun TimelineBarCard(
                                 else type.color
                             )
                     )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
-                TextButton(
-                    onClick = onOpenLms,
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                ) {
-                    Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(15.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Open in LMS", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }

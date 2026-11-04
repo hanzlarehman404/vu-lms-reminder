@@ -202,29 +202,35 @@ fun ActivityCard(
                     }
                 }
 
-                // Completion Toggle Checkbox with confirmation prompt
-                Box(
-                    modifier = Modifier
-                        .size(26.dp)
-                        .background(
-                            color = if (activity.isCompleted) VuGreenPrimary else Color.Transparent,
-                            shape = RoundedCornerShape(6.dp)
-                        )
-                        .border(
-                            width = 1.5.dp,
-                            color = if (activity.isCompleted) VuGreenPrimary else MaterialTheme.colorScheme.outline,
-                            shape = RoundedCornerShape(6.dp)
-                        )
-                        .clickable { showConfirmDialog = true },
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (activity.isCompleted) {
-                        Icon(
-                            imageVector = Icons.Default.Check,
-                            contentDescription = "Completed",
-                            tint = Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
+                if (!isUpcoming) {
+                    // Completion Toggle Checkbox with accessible touch target
+                    IconButton(
+                        onClick = { showConfirmDialog = true },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .background(
+                                    color = if (activity.isCompleted) VuGreenPrimary else Color.Transparent,
+                                    shape = RoundedCornerShape(6.dp)
+                                )
+                                .border(
+                                    width = 1.5.dp,
+                                    color = if (activity.isCompleted) VuGreenPrimary else MaterialTheme.colorScheme.outline,
+                                    shape = RoundedCornerShape(6.dp)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (activity.isCompleted) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "Completed",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }

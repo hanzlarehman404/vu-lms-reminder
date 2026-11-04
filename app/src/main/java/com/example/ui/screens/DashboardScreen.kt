@@ -158,13 +158,6 @@ fun DashboardScreen(
             onToggleCompletion = { done ->
                 onToggleCompletion(selectedActivityForDetail!!.id, done)
                 selectedActivityForDetail = selectedActivityForDetail!!.copy(isCompleted = done)
-            },
-            onOpenLms = {
-                try {
-                    val url = selectedActivityForDetail!!.url.ifEmpty { "https://vulms.vu.edu.pk" }
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                    context.startActivity(intent)
-                } catch (ignored: Exception) {}
             }
         )
     }
@@ -430,13 +423,6 @@ fun DashboardScreen(
                             onClick = { onCategorySelected("This Week") }
                         )
                         StatPill(
-                            label = "Overdue",
-                            count = stats.overdueCount,
-                            isSelected = selectedCategory == "Overdue",
-                            color = Color(0xFF991B1B),
-                            onClick = { onCategorySelected("Overdue") }
-                        )
-                        StatPill(
                             label = "Completed",
                             count = stats.completedCount,
                             isSelected = selectedCategory == "Completed",
@@ -470,11 +456,9 @@ fun DashboardScreen(
                 )
             }
 
-            // Categories Filter with Emojis
+            // Categories Filter with Emojis (Pending and All duplicate chips removed per user request)
             item {
                 val categories = listOf(
-                    "Pending" to "⏳ Pending",
-                    "All" to "📋 All Activities",
                     "Assignment" to "📝 Assignments",
                     "Quiz" to "⚡ Quizzes",
                     "GDB" to "💬 GDBs",
@@ -485,10 +469,13 @@ fun DashboardScreen(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     items(categories) { (catKey, label) ->
-                        val isSelected = (selectedCategory == catKey) || (catKey == "Pending" && selectedCategory == null)
+                        val isSelected = selectedCategory == catKey
                         FilterChip(
                             selected = isSelected,
-                            onClick = { onCategorySelected(catKey) },
+                            onClick = {
+                                if (isSelected) onCategorySelected(null)
+                                else onCategorySelected(catKey)
+                            },
                             label = { Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
                             shape = RoundedCornerShape(8.dp)
                         )

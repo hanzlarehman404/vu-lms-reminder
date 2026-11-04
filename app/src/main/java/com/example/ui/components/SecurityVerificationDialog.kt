@@ -211,7 +211,7 @@ fun SecurityVerificationDialog(
                                     Text("v2.0.0 (${current.updateInfo.version})", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
 
-                                Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
 
                                 Text("Signing Certificate SHA-256:", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                                 Surface(

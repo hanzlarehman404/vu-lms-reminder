@@ -163,7 +163,7 @@ fun CountdownTimerCard(
                 Spacer(modifier = Modifier.height(14.dp))
 
                 FilledTonalButton(
-                    onClick = { onOpenLms(activity.url) },
+                    onClick = { onOpenLms("https://vulms.vu.edu.pk/") },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(42.dp)
@@ -181,7 +181,7 @@ fun CountdownTimerCard(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Open Activity in VU LMS",
+                        text = "Open LMS",
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp
                     )

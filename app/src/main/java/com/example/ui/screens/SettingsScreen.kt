@@ -10,10 +10,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -52,6 +55,8 @@ fun SettingsScreen(
     var showDocsDialog by remember { mutableStateOf(false) }
     var showResetConfirmDialog by remember { mutableStateOf(false) }
 
+    var showLogoutConfirmDialog by remember { mutableStateOf(false) }
+
     var notificationsEnabled by remember { mutableStateOf(prefs.isNotificationsEnabled()) }
     var urgentAlarmEnabled by remember { mutableStateOf(prefs.isUrgentAlarmEnabled()) }
     var alarmSoundEnabled by remember { mutableStateOf(prefs.isAlarmSoundEnabled()) }
@@ -66,22 +71,83 @@ fun SettingsScreen(
     var selectedTheme by remember { mutableStateOf(prefs.getAppTheme()) }
 
     var activeRingtone by remember { mutableStateOf<android.media.Ringtone?>(null) }
+    var activeToneGenerator by remember { mutableStateOf<android.media.ToneGenerator?>(null) }
     var isPlayingPreview by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+    var previewJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+
+    fun triggerVibration() {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                val vm = context.getSystemService(android.content.Context.VIBRATOR_MANAGER_SERVICE) as? android.os.VibratorManager
+                vm?.defaultVibrator?.vibrate(
+                    android.os.VibrationEffect.createOneShot(200, android.os.VibrationEffect.DEFAULT_AMPLITUDE)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                val vib = context.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+                @Suppress("DEPRECATION")
+                vib?.vibrate(200)
+            }
+        } catch (ignored: Exception) {}
+    }
+
+    fun stopAudioPreview() {
+        try {
+            previewJob?.cancel()
+            previewJob = null
+            activeRingtone?.stop()
+            activeToneGenerator?.release()
+            activeToneGenerator = null
+            isPlayingPreview = false
+        } catch (ignored: Exception) {}
+    }
 
     fun playTonePreview(toneKey: String) {
         try {
-            activeRingtone?.stop()
-            val uri: Uri = when (toneKey) {
-                "alarm" -> android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM)
-                    ?: android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
-                "chime" -> android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
-                else -> android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
-            }
-            val rt = android.media.RingtoneManager.getRingtone(context, uri)
-            if (rt != null) {
-                activeRingtone = rt
-                isPlayingPreview = true
-                rt.play()
+            stopAudioPreview()
+            when (toneKey) {
+                "alarm" -> {
+                    val uri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM)
+                        ?: android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
+                    val rt = android.media.RingtoneManager.getRingtone(context, uri)
+                    if (rt != null) {
+                        activeRingtone = rt
+                        isPlayingPreview = true
+                        rt.play()
+                        previewJob = coroutineScope.launch {
+                            kotlinx.coroutines.delay(2500)
+                            try { rt.stop() } catch (ignored: Exception) {}
+                            isPlayingPreview = false
+                        }
+                    }
+                }
+                "chime" -> {
+                    val tg = android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 85)
+                    activeToneGenerator = tg
+                    isPlayingPreview = true
+                    tg.startTone(android.media.ToneGenerator.TONE_PROP_PROMPT, 600)
+                    previewJob = coroutineScope.launch {
+                        kotlinx.coroutines.delay(1000)
+                        try { tg.release() } catch (ignored: Exception) {}
+                        activeToneGenerator = null
+                        isPlayingPreview = false
+                    }
+                }
+                else -> {
+                    val uri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
+                    val rt = android.media.RingtoneManager.getRingtone(context, uri)
+                    if (rt != null) {
+                        activeRingtone = rt
+                        isPlayingPreview = true
+                        rt.play()
+                        previewJob = coroutineScope.launch {
+                            kotlinx.coroutines.delay(2500)
+                            try { rt.stop() } catch (ignored: Exception) {}
+                            isPlayingPreview = false
+                        }
+                    }
+                }
             }
         } catch (ignored: Exception) {
             isPlayingPreview = false
@@ -90,9 +156,7 @@ fun SettingsScreen(
 
     DisposableEffect(Unit) {
         onDispose {
-            try {
-                activeRingtone?.stop()
-            } catch (ignored: Exception) {}
+            stopAudioPreview()
         }
     }
 
@@ -111,6 +175,40 @@ fun SettingsScreen(
 
     if (showDocsDialog) {
         AppDocsDialog(onDismiss = { showDocsDialog = false })
+    }
+
+    if (showLogoutConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutConfirmDialog = false },
+            icon = {
+                Icon(Icons.Default.Warning, contentDescription = null, tint = VuDangerRed, modifier = Modifier.size(36.dp))
+            },
+            title = { Text("Confirm Sign Out", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "Are you sure you want to sign out? Your saved offline activities will remain on your device, but automatic LMS sync and reminders will be paused until you sign back in.",
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showLogoutConfirmDialog = false
+                        onLogout()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = VuDangerRed),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Sign Out", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogoutConfirmDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     if (showResetConfirmDialog) {
@@ -281,14 +379,15 @@ fun SettingsScreen(
                     border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(16.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             if (studentAvatarFile != null && studentAvatarFile.exists() && studentAvatarFile.length() > 0) {
                                 AsyncImage(
                                     model = studentAvatarFile,
@@ -324,13 +423,22 @@ fun SettingsScreen(
                             }
                         }
 
+                        Spacer(modifier = Modifier.height(14.dp))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        Spacer(modifier = Modifier.height(12.dp))
+
                         OutlinedButton(
-                            onClick = onLogout,
-                            shape = RoundedCornerShape(8.dp),
+                            onClick = { showLogoutConfirmDialog = true },
+                            shape = RoundedCornerShape(10.dp),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = VuDangerRed),
-                            modifier = Modifier.testTag("logout_button")
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(42.dp)
+                                .testTag("logout_button")
                         ) {
-                            Text("Sign Out", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Icon(Icons.Default.Logout, contentDescription = null, modifier = Modifier.size(16.dp), tint = VuDangerRed)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Sign Out", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -513,7 +621,7 @@ fun SettingsScreen(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("Full-Screen Alarm on Due Date", fontSize = 13.sp, fontWeight = FontWeight.Medium)
                                 Text(
-                                    text = if (urgentAlarmEnabled) "Wakes screen with full alarm overlay 2h before deadline." else "Off: Shows regular heads-up notification in shade instead.",
+                                    text = if (urgentAlarmEnabled) "Wakes screen with full alarm overlay before deadline." else "Off: Shows regular heads-up notification in shade instead.",
                                     fontSize = 11.sp,
                                     color = if (urgentAlarmEnabled) VuSuccessMint else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -557,39 +665,8 @@ fun SettingsScreen(
 
                         if (alarmSoundEnabled) {
                             Spacer(modifier = Modifier.height(10.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("Select Ringtone / Tone:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                FilledTonalButton(
-                                    onClick = {
-                                        if (isPlayingPreview) {
-                                            activeRingtone?.stop()
-                                            isPlayingPreview = false
-                                        } else {
-                                            playTonePreview(notificationRingtone)
-                                        }
-                                    },
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.height(32.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = if (isPlayingPreview) Icons.Default.Stop else Icons.Default.VolumeUp,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = if (isPlayingPreview) "Stop Preview" else "Test Tone",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(6.dp))
+                            Text("Select Ringtone / Tone:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Spacer(modifier = Modifier.height(8.dp))
 
                             val toneOptions = listOf(
                                 Triple("alarm", "Alarm Tone", "High-urgency loud wake tone"),
@@ -678,6 +755,7 @@ fun SettingsScreen(
                                 onCheckedChange = {
                                     vibrationEnabled = it
                                     saveNotifSettings()
+                                    triggerVibration()
                                 }
                             )
                         }
@@ -777,7 +855,7 @@ fun SettingsScreen(
                                 .fillMaxWidth()
                                 .testTag("view_docs_details_button")
                         ) {
-                            Icon(Icons.Default.MenuBook, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("View Documentation & Details", fontSize = 12.sp)
                         }
@@ -845,9 +923,9 @@ fun SettingsScreen(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        Row(
+                        Column(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Button(
                                 onClick = {
@@ -859,13 +937,13 @@ fun SettingsScreen(
                                 shape = RoundedCornerShape(10.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = VuInfoCyan),
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .height(42.dp)
+                                    .fillMaxWidth()
+                                    .heightIn(min = 44.dp)
                                     .testTag("contact_donate_button")
                             ) {
-                                Icon(Icons.Default.Favorite, contentDescription = null, modifier = Modifier.size(15.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Contact / Donate", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Icon(Icons.Default.Favorite, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Contact Developer / Donate", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             }
 
                             FilledTonalButton(
@@ -877,13 +955,13 @@ fun SettingsScreen(
                                 },
                                 shape = RoundedCornerShape(10.dp),
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .height(42.dp)
+                                    .fillMaxWidth()
+                                    .heightIn(min = 44.dp)
                                     .testTag("contribute_repo_button")
                             ) {
-                                Icon(Icons.Default.Code, contentDescription = null, modifier = Modifier.size(15.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Contribute Repo", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Icon(Icons.Default.Code, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Contribute on GitHub Repository", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }

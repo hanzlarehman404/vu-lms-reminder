@@ -6,24 +6,23 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.HourglassBottom
-import androidx.compose.material.icons.filled.Link
-import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.filled.LockClock
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.example.data.model.ActivityEntity
 import com.example.data.model.ActivityType
 import com.example.ui.theme.VuGreen
@@ -36,37 +35,54 @@ import java.util.Locale
 fun ActivityDetailDialog(
     activity: ActivityEntity,
     onDismiss: () -> Unit,
-    onToggleCompletion: (Boolean) -> Unit,
-    onOpenLms: () -> Unit
+    onToggleCompletion: (Boolean) -> Unit
 ) {
     val type = ActivityType.fromString(activity.activityType, activity.title)
-    val cal = java.util.Calendar.getInstance().apply { timeInMillis = activity.endDate }
-    val isEndOfDay = cal.get(java.util.Calendar.HOUR_OF_DAY) == 23 && cal.get(java.util.Calendar.MINUTE) >= 59
-    val startStr = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(activity.startDate))
-    val endStr = if (isEndOfDay) {
-        SimpleDateFormat("EEEE, dd MMM yyyy (Final Due Day)", Locale.getDefault()).format(Date(activity.endDate))
-    } else {
-        SimpleDateFormat("EEEE, dd MMM yyyy 'at' hh:mm a", Locale.getDefault()).format(Date(activity.endDate))
+    
+    val startStr = try {
+        SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(activity.startDate))
+    } catch (e: Exception) {
+        "N/A"
+    }
+
+    val endStr = try {
+        val cal = java.util.Calendar.getInstance().apply { timeInMillis = activity.endDate }
+        val isEndOfDay = cal.get(java.util.Calendar.HOUR_OF_DAY) == 23 && cal.get(java.util.Calendar.MINUTE) >= 59
+        val baseDate = SimpleDateFormat("EEEE, dd MMM yyyy", Locale.getDefault()).format(Date(activity.endDate))
+        if (isEndOfDay) {
+            "$baseDate (Final Due Day)"
+        } else {
+            val time = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(activity.endDate))
+            "$baseDate at $time"
+        }
+    } catch (e: Exception) {
+        "N/A"
     }
 
     val now = System.currentTimeMillis()
+    val isUpcoming = activity.isUpcoming(now)
     val remainingMillis = (activity.endDate - now).coerceAtLeast(0)
     val days = remainingMillis / (24 * 3600 * 1000)
     val hours = (remainingMillis % (24 * 3600 * 1000)) / (3600 * 1000)
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Card(
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             elevation = CardDefaults.cardElevation(8.dp),
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxWidth(0.92f)
+                .wrapContentHeight()
                 .padding(vertical = 16.dp)
                 .testTag("activity_detail_dialog")
         ) {
             Column(
                 modifier = Modifier
-                    .padding(24.dp)
+                    .fillMaxWidth()
+                    .padding(22.dp)
                     .verticalScroll(rememberScrollState())
             ) {
                 // Top Header Row
@@ -115,12 +131,12 @@ fun ActivityDetailDialog(
 
                 Spacer(modifier = Modifier.height(18.dp))
 
-                Divider(color = MaterialTheme.colorScheme.outlineVariant)
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
                 Spacer(modifier = Modifier.height(16.dp))
 
                 DetailItem(
-                    icon = Icons.Default.CalendarToday,
+                    icon = Icons.Default.DateRange,
                     title = "Opening Date",
                     value = startStr
                 )
@@ -140,7 +156,9 @@ fun ActivityDetailDialog(
                     icon = Icons.Default.School,
                     title = "Time Remaining",
                     value = if (activity.isCompleted) {
-                        "Completed (Alarms cancelled)"
+                        "Completed (Alarms muted)"
+                    } else if (isUpcoming) {
+                        "Opens in ${activity.daysUntilStart(now)} days"
                     } else if (activity.endDate < now) {
                         "Expired / Overdue"
                     } else {
@@ -148,17 +166,9 @@ fun ActivityDetailDialog(
                     }
                 )
 
-                Spacer(modifier = Modifier.height(12.dp))
-
-                DetailItem(
-                    icon = Icons.Default.Link,
-                    title = "LMS Direct URL",
-                    value = activity.url.ifEmpty { "https://vulms.vu.edu.pk" }
-                )
-
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // Toggle Completion
+                // Toggle Completion (Only for available activities)
                 Surface(
                     shape = RoundedCornerShape(14.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
@@ -171,50 +181,53 @@ fun ActivityDetailDialog(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                             Icon(
-                                imageVector = Icons.Default.CheckCircle,
+                                imageVector = if (isUpcoming) Icons.Default.LockClock else Icons.Default.CheckCircle,
                                 contentDescription = null,
                                 tint = if (activity.isCompleted) VuGreen else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text(
-                                    text = if (activity.isCompleted) "Status: Completed" else "Status: Pending",
+                                    text = if (isUpcoming) "Status: Upcoming (Opens $startStr)"
+                                           else if (activity.isCompleted) "Status: Completed"
+                                           else "Status: Pending",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 14.sp
                                 )
                                 Text(
-                                    text = if (activity.isCompleted) "Alarms muted for this task" else "Alarms active before deadline",
+                                    text = if (isUpcoming) "Cannot be marked done before opening date"
+                                           else if (activity.isCompleted) "Alarms muted for this task"
+                                           else "Alarms active before deadline",
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
 
-                        Switch(
-                            checked = activity.isCompleted,
-                            onCheckedChange = onToggleCompletion,
-                            colors = SwitchDefaults.colors(checkedThumbColor = VuGreen)
-                        )
+                        if (!isUpcoming) {
+                            Switch(
+                                checked = activity.isCompleted,
+                                onCheckedChange = onToggleCompletion,
+                                colors = SwitchDefaults.colors(checkedThumbColor = VuGreen)
+                            )
+                        }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(18.dp))
 
-                // Action Button: Open in LMS
-                Button(
-                    onClick = onOpenLms,
+                // Dismiss / Close Button
+                OutlinedButton(
+                    onClick = onDismiss,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp)
-                        .testTag("detail_open_lms_button"),
-                    colors = ButtonDefaults.buttonColors(containerColor = VuNavy),
+                        .height(46.dp)
+                        .testTag("detail_close_button"),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Icon(Icons.Default.OpenInBrowser, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Open in VU LMS", fontWeight = FontWeight.Bold)
+                    Text("Close", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 }
             }
         }
