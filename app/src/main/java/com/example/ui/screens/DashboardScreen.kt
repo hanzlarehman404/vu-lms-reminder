@@ -46,14 +46,16 @@ import java.util.Locale
 fun DashboardScreen(
     stats: DashboardStats,
     activities: List<ActivityEntity>,
-    selectedCategory: String?,
+    selectedStatus: String,
+    selectedActivityType: String,
     showUpcomingOnly: Boolean,
     searchQuery: String,
     studentId: String,
     lastSyncTime: Long,
     isSyncing: Boolean,
     syncMessage: String?,
-    onCategorySelected: (String?) -> Unit,
+    onStatusSelected: (String) -> Unit,
+    onActivityTypeSelected: (String) -> Unit,
     onToggleUpcomingOnly: (Boolean) -> Unit,
     onSearchQueryChanged: (String) -> Unit,
     onToggleCompletion: (activityId: String, completed: Boolean) -> Unit,
@@ -355,7 +357,7 @@ fun DashboardScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "⏳ Upcoming (Opens Later)",
+                                text = "⏳ Upcoming",
                                 fontWeight = if (!isAvailableTab) FontWeight.Bold else FontWeight.Medium,
                                 fontSize = 13.sp,
                                 color = if (!isAvailableTab) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
@@ -390,44 +392,44 @@ fun DashboardScreen(
                         StatPill(
                             label = "All",
                             count = stats.allCount,
-                            isSelected = selectedCategory == "All",
+                            isSelected = selectedStatus == "All",
                             color = MaterialTheme.colorScheme.primary,
-                            onClick = { onCategorySelected("All") }
+                            onClick = { onStatusSelected("All") }
                         )
                         StatPill(
                             label = "Pending",
                             count = stats.totalPending,
-                            isSelected = selectedCategory == null || selectedCategory == "Pending",
+                            isSelected = selectedStatus == "Pending",
                             color = VuInfoCyan,
-                            onClick = { onCategorySelected("Pending") }
+                            onClick = { onStatusSelected("Pending") }
                         )
                         StatPill(
                             label = "Due Today",
                             count = stats.todayCount,
-                            isSelected = selectedCategory == "Today",
+                            isSelected = selectedStatus == "Today",
                             color = VuDangerRed,
-                            onClick = { onCategorySelected("Today") }
+                            onClick = { onStatusSelected("Today") }
                         )
                         StatPill(
                             label = "Tomorrow",
                             count = stats.tomorrowCount,
-                            isSelected = selectedCategory == "Tomorrow",
+                            isSelected = selectedStatus == "Tomorrow",
                             color = VuWarningAmber,
-                            onClick = { onCategorySelected("Tomorrow") }
+                            onClick = { onStatusSelected("Tomorrow") }
                         )
                         StatPill(
                             label = "This Week",
                             count = stats.thisWeekCount,
-                            isSelected = selectedCategory == "This Week",
+                            isSelected = selectedStatus == "This Week",
                             color = VuInfoCyan,
-                            onClick = { onCategorySelected("This Week") }
+                            onClick = { onStatusSelected("This Week") }
                         )
                         StatPill(
                             label = "Completed",
                             count = stats.completedCount,
-                            isSelected = selectedCategory == "Completed",
+                            isSelected = selectedStatus == "Completed",
                             color = VuGreenPrimary,
-                            onClick = { onCategorySelected("Completed") }
+                            onClick = { onStatusSelected("Completed") }
                         )
                     }
                 }
@@ -456,9 +458,10 @@ fun DashboardScreen(
                 )
             }
 
-            // Categories Filter with Emojis (Pending and All duplicate chips removed per user request)
+            // Activity Types Filter with Emojis (All button placed before Assignment, Quiz, etc.)
             item {
-                val categories = listOf(
+                val types = listOf(
+                    "All" to "📋 All",
                     "Assignment" to "📝 Assignments",
                     "Quiz" to "⚡ Quizzes",
                     "GDB" to "💬 GDBs",
@@ -468,14 +471,11 @@ fun DashboardScreen(
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    items(categories) { (catKey, label) ->
-                        val isSelected = selectedCategory == catKey
+                    items(types) { (typeKey, label) ->
+                        val isSelected = selectedActivityType == typeKey
                         FilterChip(
                             selected = isSelected,
-                            onClick = {
-                                if (isSelected) onCategorySelected(null)
-                                else onCategorySelected(catKey)
-                            },
+                            onClick = { onActivityTypeSelected(typeKey) },
                             label = { Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
                             shape = RoundedCornerShape(8.dp)
                         )

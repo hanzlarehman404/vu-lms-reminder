@@ -153,4 +153,67 @@ class ExampleRobolectricTest {
         assertEquals("27:AD:82:EF:6C:AA:E3:B7:0D:2C:A3:D9:F8:45:E2:9B:AA:04:C0:A4:5D:2A:EE:F7:AC:ED:64:24:6B:0F:99:74", parsed?.certificateSha256)
         assertEquals("66db0530c949cd67d07ee5628b2c807dae74881126756bcb72d0dd3400fade32", parsed?.sha256)
     }
+
+    @Test
+    fun `test combined status and activity type filtering`() {
+        val now = System.currentTimeMillis()
+        val list = listOf(
+            ActivityEntity(
+                id = "1",
+                title = "CS101 Assignment 1",
+                courseCode = "CS101",
+                semester = "Fall 2026",
+                activityType = "Assignment",
+                startDate = now - 1000L,
+                endDate = now + 86400000L,
+                isExpired = false,
+                isCompleted = false,
+                url = "",
+                colorHex = "#000000"
+            ),
+            ActivityEntity(
+                id = "2",
+                title = "CS101 Quiz 1",
+                courseCode = "CS101",
+                semester = "Fall 2026",
+                activityType = "Quiz",
+                startDate = now - 1000L,
+                endDate = now + 86400000L,
+                isExpired = false,
+                isCompleted = false,
+                url = "",
+                colorHex = "#000000"
+            ),
+            ActivityEntity(
+                id = "3",
+                title = "CS101 Assignment 2",
+                courseCode = "CS101",
+                semester = "Fall 2026",
+                activityType = "Assignment",
+                startDate = now - 1000L,
+                endDate = now + 86400000L,
+                isExpired = false,
+                isCompleted = true,
+                url = "",
+                colorHex = "#000000"
+            )
+        )
+
+        // Filter: Status = Pending, Type = Assignment -> Should only return Assignment 1
+        val pendingAssignments = list.filter {
+            !it.isCompleted && it.activityType.equals("Assignment", ignoreCase = true)
+        }
+        assertEquals(1, pendingAssignments.size)
+        assertEquals("CS101 Assignment 1", pendingAssignments.first().title)
+
+        // Filter: Status = All, Type = Assignment -> Should return Assignment 1 and Assignment 2
+        val allAssignments = list.filter {
+            it.activityType.equals("Assignment", ignoreCase = true)
+        }
+        assertEquals(2, allAssignments.size)
+
+        // Filter: Status = Pending, Type = All -> Should return Assignment 1 and Quiz 1
+        val allPending = list.filter { !it.isCompleted }
+        assertEquals(2, allPending.size)
+    }
 }

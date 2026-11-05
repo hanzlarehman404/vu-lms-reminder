@@ -150,7 +150,8 @@ class MainActivity : ComponentActivity() {
                         val stats by viewModel.stats.collectAsStateWithLifecycle()
                         val activities by viewModel.filteredActivities.collectAsStateWithLifecycle()
                         val allActivities by viewModel.allActivities.collectAsStateWithLifecycle()
-                        val selectedCategory by viewModel.selectedCategory.collectAsStateWithLifecycle()
+                        val selectedStatus by viewModel.selectedStatus.collectAsStateWithLifecycle()
+                        val selectedActivityType by viewModel.selectedActivityType.collectAsStateWithLifecycle()
                         val showUpcomingOnly by viewModel.showUpcomingOnly.collectAsStateWithLifecycle()
                         val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
                         val studentId by viewModel.studentId.collectAsStateWithLifecycle()
@@ -171,14 +172,16 @@ class MainActivity : ComponentActivity() {
                                 0 -> DashboardScreen(
                                     stats = stats,
                                     activities = activities,
-                                    selectedCategory = selectedCategory,
+                                    selectedStatus = selectedStatus,
+                                    selectedActivityType = selectedActivityType,
                                     showUpcomingOnly = showUpcomingOnly,
                                     searchQuery = searchQuery,
                                     studentId = studentId,
                                     lastSyncTime = lastSyncTime,
                                     isSyncing = isSyncing,
                                     syncMessage = syncMessage,
-                                    onCategorySelected = { viewModel.setCategory(it) },
+                                    onStatusSelected = { viewModel.setStatus(it) },
+                                    onActivityTypeSelected = { viewModel.setActivityType(it) },
                                     onToggleUpcomingOnly = { viewModel.toggleUpcomingOnly(it) },
                                     onSearchQueryChanged = { viewModel.setSearchQuery(it) },
                                     onToggleCompletion = { id, done -> viewModel.toggleActivityCompleted(id, done) },

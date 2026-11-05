@@ -52,8 +52,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _selectedTab = MutableStateFlow(0) // 0: Dashboard, 1: Calendar, 2: Settings
     val selectedTab: StateFlow<Int> = _selectedTab.asStateFlow()
 
-    private val _selectedCategory = MutableStateFlow<String?>("Pending")
-    val selectedCategory: StateFlow<String?> = _selectedCategory.asStateFlow()
+    private val _selectedStatus = MutableStateFlow("Pending")
+    val selectedStatus: StateFlow<String> = _selectedStatus.asStateFlow()
+
+    private val _selectedActivityType = MutableStateFlow("All")
+    val selectedActivityType: StateFlow<String> = _selectedActivityType.asStateFlow()
+
+    val selectedCategory: StateFlow<String?> = _selectedStatus.asStateFlow()
 
     // Flag to separate Available vs Upcoming activities
     private val _showUpcomingOnly = MutableStateFlow(false)
@@ -106,36 +111,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     val filteredActivities: StateFlow<List<ActivityEntity>> = combine(
         allActivities,
-        _selectedCategory,
+        _selectedStatus,
+        _selectedActivityType,
         _showUpcomingOnly,
         _searchQuery
-    ) { list, category, upcomingOnly, query ->
+    ) { list, status, actType, upcomingOnly, query ->
         val now = System.currentTimeMillis()
         list.filter { item ->
             // Availability filter: If upcomingOnly is true, show future start dates; otherwise show available activities
             val matchesTimeline = if (upcomingOnly) {
                 item.isUpcoming(now)
             } else {
-                // By default show available activities (or completed/overdue in this cycle)
                 item.startDate <= now || item.isCompleted
             }
 
-            val matchesCategory = when (category) {
+            val matchesStatus = when (status) {
                 "All" -> true
-                "Pending", null -> !item.isCompleted
+                "Pending" -> !item.isCompleted
                 "Today" -> item.isDueToday(now) && !item.isCompleted
                 "Tomorrow" -> item.isDueTomorrow(now) && !item.isCompleted
                 "This Week" -> item.isDueThisWeek(now) && !item.isCompleted
-                "Overdue" -> item.isOverdue(now)
                 "Completed" -> item.isCompleted
-                else -> item.activityType.equals(category, ignoreCase = true)
+                else -> true
+            }
+
+            val matchesType = when (actType) {
+                "All" -> true
+                else -> item.activityType.equals(actType, ignoreCase = true)
             }
 
             val matchesQuery = query.isBlank() ||
                     item.title.contains(query, ignoreCase = true) ||
                     item.courseCode.contains(query, ignoreCase = true)
 
-            matchesTimeline && matchesCategory && matchesQuery
+            matchesTimeline && matchesStatus && matchesType && matchesQuery
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -150,8 +159,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _selectedTab.value = tab
     }
 
+    fun setStatus(status: String) {
+        _selectedStatus.value = status
+    }
+
+    fun setActivityType(type: String) {
+        _selectedActivityType.value = type
+    }
+
     fun setCategory(category: String?) {
-        _selectedCategory.value = category
+        if (category != null) {
+            when (category) {
+                "All", "Pending", "Today", "Tomorrow", "This Week", "Completed" -> _selectedStatus.value = category
+                else -> _selectedActivityType.value = category
+            }
+        }
     }
 
     fun toggleUpcomingOnly(upcoming: Boolean) {
