@@ -134,7 +134,6 @@ class NotificationHelper(private val context: Context) {
             .setContentIntent(appPendingIntent)
             .setAutoCancel(true)
             .addAction(android.R.drawable.ic_menu_view, "Open LMS", lmsPendingIntent)
-            .addAction(android.R.drawable.checkbox_on_background, "Mark All Done", markAllPendingIntent)
             .addAction(android.R.drawable.ic_popup_sync, "Resync LMS", resyncPendingIntent)
 
         val prefs = com.example.data.local.PreferencesManager(context)
@@ -191,17 +190,6 @@ class NotificationHelper(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val markAllIntent = Intent(context, NotificationActionReceiver::class.java).apply {
-            action = NotificationActionReceiver.ACTION_MARK_ALL_DONE
-            putExtra(NotificationActionReceiver.EXTRA_NOTIFICATION_ID, notificationId)
-        }
-        val markAllPendingIntent = PendingIntent.getBroadcast(
-            context,
-            notificationId + 2,
-            markAllIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
         val body = buildString {
             append("Have you done all of your available activities?\n")
             if (todayDueCount > 0) {
@@ -219,7 +207,6 @@ class NotificationHelper(private val context: Context) {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(appPendingIntent)
             .setAutoCancel(true)
-            .addAction(android.R.drawable.checkbox_on_background, "Mark All Done", markAllPendingIntent)
             .addAction(android.R.drawable.ic_popup_sync, "Resync LMS", resyncPendingIntent)
 
         if (!prefs.isAlarmSoundEnabled()) {
@@ -256,17 +243,6 @@ class NotificationHelper(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val markAllIntent = Intent(context, NotificationActionReceiver::class.java).apply {
-            action = NotificationActionReceiver.ACTION_MARK_ALL_DONE
-            putExtra(NotificationActionReceiver.EXTRA_NOTIFICATION_ID, notificationId)
-        }
-        val markAllPendingIntent = PendingIntent.getBroadcast(
-            context,
-            notificationId + 2,
-            markAllIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
         val body = buildString {
             if (todayDueCount > 0) {
                 append("🚨 $todayDueCount activities are due TODAY!\n")
@@ -288,12 +264,38 @@ class NotificationHelper(private val context: Context) {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(appPendingIntent)
             .setAutoCancel(true)
-            .addAction(android.R.drawable.checkbox_on_background, "Mark All Done", markAllPendingIntent)
             .addAction(android.R.drawable.ic_popup_sync, "Resync LMS", resyncPendingIntent)
 
         if (!prefs.isAlarmSoundEnabled()) {
             builder.setSilent(true)
         }
+
+        notificationManager.notify(notificationId, builder.build())
+    }
+
+    fun showResyncConfirmationNotification(
+        activitiesCount: Int,
+        message: String = "LMS activities synced successfully. You're up to date!"
+    ) {
+        val notificationId = 10099
+        val appIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val appPendingIntent = PendingIntent.getActivity(
+            context,
+            notificationId,
+            appIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val builder = NotificationCompat.Builder(context, CHANNEL_DEADLINE_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("✅ VU LMS Synced")
+            .setContentText(message)
+            .setStyle(NotificationCompat.BigTextStyle().bigText("$message\nTotal available activities: $activitiesCount"))
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setContentIntent(appPendingIntent)
+            .setAutoCancel(true)
 
         notificationManager.notify(notificationId, builder.build())
     }

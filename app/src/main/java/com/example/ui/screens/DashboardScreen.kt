@@ -54,18 +54,18 @@ fun DashboardScreen(
     lastSyncTime: Long,
     isSyncing: Boolean,
     syncMessage: String?,
+    typeCounts: Map<String, Int> = emptyMap(),
     onStatusSelected: (String) -> Unit,
     onActivityTypeSelected: (String) -> Unit,
     onToggleUpcomingOnly: (Boolean) -> Unit,
     onSearchQueryChanged: (String) -> Unit,
-    onToggleCompletion: (activityId: String, completed: Boolean) -> Unit,
-    onMarkAllAvailableDone: () -> Unit,
+    onToggleCompletion: (activityId: String, completed: Boolean) -> Unit = { _, _ -> },
+    onMarkAllAvailableDone: () -> Unit = {},
     onSyncNow: () -> Unit,
     onClearSyncMessage: () -> Unit
 ) {
     val context = LocalContext.current
     var selectedActivityForDetail by remember { mutableStateOf<ActivityEntity?>(null) }
-    var showMarkAllConfirmDialog by remember { mutableStateOf(false) }
     var showResyncWarningDialog by remember { mutableStateOf(false) }
 
     val infiniteTransition = rememberInfiniteTransition(label = "sync_spin")
@@ -120,47 +120,10 @@ fun DashboardScreen(
         )
     }
 
-    if (showMarkAllConfirmDialog) {
-        AlertDialog(
-            onDismissRequest = { showMarkAllConfirmDialog = false },
-            title = {
-                Text("Confirm Mark All Done", fontWeight = FontWeight.Bold)
-            },
-            text = {
-                Text(
-                    "Please confirm on your official VU LMS portal before marking all available activities as done. This will mark all currently active tasks completed and silence alarms.",
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showMarkAllConfirmDialog = false
-                        onMarkAllAvailableDone()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = VuGreenPrimary),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("Confirm Done", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showMarkAllConfirmDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-
     if (selectedActivityForDetail != null) {
         ActivityDetailDialog(
             activity = selectedActivityForDetail!!,
-            onDismiss = { selectedActivityForDetail = null },
-            onToggleCompletion = { done ->
-                onToggleCompletion(selectedActivityForDetail!!.id, done)
-                selectedActivityForDetail = selectedActivityForDetail!!.copy(isCompleted = done)
-            }
+            onDismiss = { selectedActivityForDetail = null }
         )
     }
 
@@ -458,15 +421,14 @@ fun DashboardScreen(
                 )
             }
 
-            // Activity Types Filter with Emojis (All button placed before Assignment, Quiz, etc.)
+            // Activity Types Filter with Emojis & Item Counts
             item {
                 val types = listOf(
-                    "All" to "📋 All",
-                    "Assignment" to "📝 Assignments",
-                    "Quiz" to "⚡ Quizzes",
-                    "GDB" to "💬 GDBs",
-                    "Practical" to "🧪 Practicals",
-                    "Challan" to "💳 Challans"
+                    "All" to "📋 All (${typeCounts["All"] ?: activities.size})",
+                    "Assignment" to "📝 Assignments (${typeCounts["Assignment"] ?: 0})",
+                    "Quiz" to "⚡ Quizzes (${typeCounts["Quiz"] ?: 0})",
+                    "GDB" to "💬 GDBs (${typeCounts["GDB"] ?: 0})",
+                    "Practical" to "🧪 Practicals (${typeCounts["Practical"] ?: 0})"
                 )
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -483,7 +445,7 @@ fun DashboardScreen(
                 }
             }
 
-            // Header Row with "Mark All Available as Done" button
+            // Section Header
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -498,20 +460,28 @@ fun DashboardScreen(
                         color = MaterialTheme.colorScheme.onSurface
                     )
 
-                    if (!showUpcomingOnly && activities.isNotEmpty()) {
-                        FilledTonalButton(
-                            onClick = { showMarkAllConfirmDialog = true },
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                            shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.filledTonalButtonColors(
-                                containerColor = VuGreenPrimary.copy(alpha = 0.12f),
-                                contentColor = VuGreenPrimary
-                            ),
-                            modifier = Modifier.testTag("mark_all_done_button")
+                    // VU Quick Link shortcuts
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        TextButton(
+                            onClick = {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.vu.edu.pk/SupportSystem/")))
+                            },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                         ) {
-                            Icon(Icons.Default.DoneAll, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Mark All Done", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Icon(Icons.Default.SupportAgent, contentDescription = null, modifier = Modifier.size(14.dp), tint = VuGreenPrimary)
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text("Support", fontSize = 11.sp, color = VuGreenPrimary, fontWeight = FontWeight.Bold)
+                        }
+
+                        TextButton(
+                            onClick = {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://gmail.vu.edu.pk/")))
+                            },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Icon(Icons.Default.Mail, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color(0xFFD93025))
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text("Mail", fontSize = 11.sp, color = Color(0xFFD93025), fontWeight = FontWeight.Bold)
                         }
                     }
                 }

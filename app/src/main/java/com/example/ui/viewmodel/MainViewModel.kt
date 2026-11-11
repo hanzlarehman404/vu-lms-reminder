@@ -11,6 +11,11 @@ import com.example.data.repository.VuLmsRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
+import com.example.data.model.ChallanEntity
+import com.example.data.model.EnrolledSubject
+import com.example.data.model.StudentProfile
+import java.io.File
+
 sealed class LoginUiState {
     object Idle : LoginUiState()
     data class Loading(val step: String) : LoginUiState()
@@ -49,7 +54,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _loginState = MutableStateFlow<LoginUiState>(LoginUiState.Idle)
     val loginState: StateFlow<LoginUiState> = _loginState.asStateFlow()
 
-    private val _selectedTab = MutableStateFlow(0) // 0: Dashboard, 1: Calendar, 2: Settings
+    private val _selectedTab = MutableStateFlow(0) // 0: Dashboard, 1: Timeline, 2: Account Book, 3: Student Services, 4: Settings
     val selectedTab: StateFlow<Int> = _selectedTab.asStateFlow()
 
     private val _selectedStatus = MutableStateFlow("Pending")
@@ -82,11 +87,51 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _manualUpdateResult = MutableStateFlow<ManualUpdateResult?>(null)
     val manualUpdateResult: StateFlow<ManualUpdateResult?> = _manualUpdateResult.asStateFlow()
 
-    private val _studentAvatarFile = MutableStateFlow<java.io.File?>(repository.getProfileAvatarFile())
-    val studentAvatarFile: StateFlow<java.io.File?> = _studentAvatarFile.asStateFlow()
+    private val _studentAvatarFile = MutableStateFlow<File?>(repository.getProfileAvatarFile())
+    val studentAvatarFile: StateFlow<File?> = _studentAvatarFile.asStateFlow()
+
+    val challans: StateFlow<List<ChallanEntity>> = repository.challans
+    val currentSubjects: StateFlow<List<EnrolledSubject>> = repository.currentSubjects
+    val studentProfile: StateFlow<StudentProfile> = repository.studentProfile
+
+    private val _studentECardFile = MutableStateFlow<File?>(repository.getStudentECardFile())
+    val studentECardFile: StateFlow<File?> = _studentECardFile.asStateFlow()
+
+    private val _isDownloadingECard = MutableStateFlow(false)
+    val isDownloadingECard: StateFlow<Boolean> = _isDownloadingECard.asStateFlow()
+
+    private val _eCardMessage = MutableStateFlow<String?>(null)
+    val eCardMessage: StateFlow<String?> = _eCardMessage.asStateFlow()
+
+    private val _showAutoSyncPrompt = MutableStateFlow(!prefs.hasPromptedAutoSync() && prefs.isLoggedIn())
+    val showAutoSyncPrompt: StateFlow<Boolean> = _showAutoSyncPrompt.asStateFlow()
 
     val allActivities: StateFlow<List<ActivityEntity>> = repository.allActivities
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val activityTypeCounts: StateFlow<Map<String, Int>> = combine(allActivities, _selectedStatus, _showUpcomingOnly) { list, status, upcomingOnly ->
+        val now = System.currentTimeMillis()
+        val filteredByStatus = list.filter { item ->
+            val matchesTimeline = if (upcomingOnly) item.isUpcoming(now) else (item.startDate <= now || item.isCompleted)
+            val matchesStatus = when (status) {
+                "All" -> true
+                "Pending" -> !item.isCompleted
+                "Today" -> item.isDueToday(now) && !item.isCompleted
+                "Tomorrow" -> item.isDueTomorrow(now) && !item.isCompleted
+                "This Week" -> item.isDueThisWeek(now) && !item.isCompleted
+                "Completed" -> item.isCompleted
+                else -> true
+            }
+            matchesTimeline && matchesStatus
+        }
+        mapOf(
+            "All" to filteredByStatus.size,
+            "Assignment" to filteredByStatus.count { it.activityType.equals("Assignment", true) },
+            "Quiz" to filteredByStatus.count { it.activityType.equals("Quiz", true) },
+            "GDB" to filteredByStatus.count { it.activityType.equals("GDB", true) },
+            "Practical" to filteredByStatus.count { it.activityType.equals("Practical", true) }
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     val stats: StateFlow<DashboardStats> = allActivities.map { list ->
         val now = System.currentTimeMillis()
@@ -150,13 +195,63 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         if (prefs.isLoggedIn()) {
-            syncNow(silent = true)
+            if (prefs.hasPromptedAutoSync()) {
+                if (prefs.isAutoSyncOnLaunch()) {
+                    syncNow(silent = true)
+                }
+            } else {
+                _showAutoSyncPrompt.value = true
+            }
         }
         checkForAppUpdates()
     }
 
+    fun setAutoSyncChoice(enabled: Boolean) {
+        prefs.setAutoSyncOnLaunch(enabled)
+        prefs.setHasPromptedAutoSync(true)
+        _showAutoSyncPrompt.value = false
+        if (enabled) {
+            syncNow(silent = false)
+        }
+    }
+
+    fun downloadECard() {
+        if (_isDownloadingECard.value) return
+        viewModelScope.launch {
+            _isDownloadingECard.value = true
+            _eCardMessage.value = "Downloading official E-Card PDF from VU LMS..."
+            val res = repository.downloadStudentECard()
+            _isDownloadingECard.value = false
+            if (res.isSuccess) {
+                _studentECardFile.value = res.getOrNull()
+                _eCardMessage.value = "E-Card downloaded successfully!"
+            } else {
+                val err = res.exceptionOrNull()?.localizedMessage ?: "Download failed"
+                _eCardMessage.value = "Failed to download E-Card: $err"
+            }
+        }
+    }
+
     fun selectTab(tab: Int) {
         _selectedTab.value = tab
+        if (tab == 3 && studentProfile.value.studentId.isEmpty() && !_isSyncing.value) {
+            refreshStudentProfile()
+        }
+    }
+
+    fun refreshStudentProfile() {
+        if (_isSyncing.value) return
+        viewModelScope.launch {
+            _isSyncing.value = true
+            _syncMessage.value = "Fetching latest academic profile from VU LMS..."
+            val result = repository.refreshStudentProfile()
+            _isSyncing.value = false
+            if (result.isSuccess) {
+                _syncMessage.value = "Academic profile updated"
+            } else {
+                _syncMessage.value = "Could not fetch profile. Please check LMS connection."
+            }
+        }
     }
 
     fun setStatus(status: String) {
@@ -199,6 +294,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val result = repository.login(studentId, pass)
             if (result.isSuccess) {
                 _studentAvatarFile.value = repository.getProfileAvatarFile()
+                _studentECardFile.value = repository.getStudentECardFile()
                 _loginState.value = LoginUiState.Success
             } else {
                 val err = result.exceptionOrNull()?.localizedMessage ?: "Login failed. Check your credentials."
@@ -215,11 +311,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (_isSyncing.value) return
         viewModelScope.launch {
             _isSyncing.value = true
-            if (!silent) _syncMessage.value = "Syncing & auto-marking completed tasks..."
+            if (!silent) _syncMessage.value = "Syncing & auto-checking completed tasks..."
             val result = repository.syncActivities()
             _isSyncing.value = false
             if (result.isSuccess) {
                 _studentAvatarFile.value = repository.getProfileAvatarFile()
+                _studentECardFile.value = repository.getStudentECardFile()
                 val count = result.getOrNull() ?: 0
                 if (!silent) _syncMessage.value = "Synced $count activities & updated completed statuses"
             } else {

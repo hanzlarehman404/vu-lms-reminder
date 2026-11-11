@@ -45,7 +45,6 @@ fun SettingsScreen(
     isCheckingUpdate: Boolean = false,
     manualUpdateResult: ManualUpdateResult? = null,
     onLogout: () -> Unit,
-    onResetCompletions: () -> Unit,
     onCheckUpdate: () -> Unit,
     onDismissManualUpdateResult: () -> Unit = {},
     onSetTheme: (String) -> Unit
@@ -53,7 +52,6 @@ fun SettingsScreen(
     val context = LocalContext.current
     var showPrivacyDialog by remember { mutableStateOf(false) }
     var showDocsDialog by remember { mutableStateOf(false) }
-    var showResetConfirmDialog by remember { mutableStateOf(false) }
 
     var showLogoutConfirmDialog by remember { mutableStateOf(false) }
 
@@ -211,32 +209,6 @@ fun SettingsScreen(
         )
     }
 
-    if (showResetConfirmDialog) {
-        AlertDialog(
-            onDismissRequest = { showResetConfirmDialog = false },
-            title = { Text("Reset All Done Statuses", fontWeight = FontWeight.Bold) },
-            text = {
-                Text(
-                    "Are you sure you want to clear all manual and auto completion marks? Reminders will be rescheduled for all available activities.",
-                    fontSize = 13.sp
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showResetConfirmDialog = false
-                        onResetCompletions()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = VuDangerRed)
-                ) {
-                    Text("Reset All", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showResetConfirmDialog = false }) { Text("Cancel") }
-            }
-        )
-    }
 
     when (manualUpdateResult) {
         is ManualUpdateResult.UpToDate -> {
@@ -619,9 +591,9 @@ fun SettingsScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("Full-Screen Alarm on Due Date", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                Text("Full-Screen Alarm at Evening Last Reminder", fontSize = 13.sp, fontWeight = FontWeight.Medium)
                                 Text(
-                                    text = if (urgentAlarmEnabled) "Wakes screen with full alarm overlay before deadline." else "Off: Shows regular heads-up notification in shade instead.",
+                                    text = if (urgentAlarmEnabled) "Wakes screen with continuous full alarm overlay for today's activities at evening reminder." else "Off: Shows regular heads-up notification in shade instead.",
                                     fontSize = 11.sp,
                                     color = if (urgentAlarmEnabled) VuSuccessMint else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -631,6 +603,31 @@ fun SettingsScreen(
                                 onCheckedChange = {
                                     urgentAlarmEnabled = it
                                     saveNotifSettings()
+                                }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        var autoSyncOnLaunch by remember { mutableStateOf(prefs.isAutoSyncOnLaunch()) }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Auto-Sync on App Launch", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    text = if (autoSyncOnLaunch) "Fresh LMS sync runs automatically every time app opens." else "Manual mode: Tap refresh button on dashboard to sync.",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = autoSyncOnLaunch,
+                                onCheckedChange = {
+                                    autoSyncOnLaunch = it
+                                    prefs.setAutoSyncOnLaunch(it)
                                 }
                             )
                         }
@@ -796,7 +793,77 @@ fun SettingsScreen(
                 }
             }
 
-            // Task Actions & Version Check Card
+            // Background Execution & Reliability Permissions Card
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, VuGreenPrimary.copy(alpha = 0.4f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.BatteryChargingFull, contentDescription = null, tint = VuGreenPrimary, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Background Alarm Reliability", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(
+                            text = "To ensure morning briefings and evening alarms wake your device reliably on time without Android power-saving battery delays:",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        OutlinedButton(
+                            onClick = {
+                                try {
+                                    val intent = Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                        data = Uri.parse("package:${context.packageName}")
+                                    }
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    try {
+                                        val intent = Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                        context.startActivity(intent)
+                                    } catch (ignored: Exception) {}
+                                }
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.ElectricBolt, contentDescription = null, modifier = Modifier.size(16.dp), tint = VuGreenPrimary)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Disable Battery Optimization for Alarms", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        }
+
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    try {
+                                        val intent = Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                                            data = Uri.parse("package:${context.packageName}")
+                                        }
+                                        context.startActivity(intent)
+                                    } catch (ignored: Exception) {}
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.Alarm, contentDescription = null, modifier = Modifier.size(16.dp), tint = VuInfoCyan)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Allow Exact Alarm Scheduling", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Version Check & Documentation Card
             item {
                 Card(
                     shape = RoundedCornerShape(16.dp),
@@ -805,16 +872,6 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(
-                            onClick = { showResetConfirmDialog = true },
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.Restore, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Reset Manual Done Statuses", fontSize = 12.sp)
-                        }
-
                         OutlinedButton(
                             onClick = onCheckUpdate,
                             enabled = !isCheckingUpdate,

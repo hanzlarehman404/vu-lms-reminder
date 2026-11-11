@@ -43,4 +43,5 @@ val DarkTextMuted = Color(0xFF92929F)
 
 // Backwards compatibility aliases
 val VuNavy = VuSidebarDark
+val VuNavyDark = VuSidebarDeep
 val VuGreen = VuGreenPrimary

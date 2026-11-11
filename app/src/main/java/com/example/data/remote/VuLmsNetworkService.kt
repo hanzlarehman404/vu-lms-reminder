@@ -3,6 +3,9 @@ package com.example.data.remote
 import android.util.Log
 import com.example.data.model.ActivityEntity
 import com.example.data.model.AppUpdateInfo
+import com.example.data.model.ChallanEntity
+import com.example.data.model.EnrolledSubject
+import com.example.data.model.StudentProfile
 import com.example.data.model.VuRawActivity
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
@@ -57,6 +60,10 @@ class VuLmsNetworkService(
 
     fun clearCookies() {
         cookieJar.clear()
+    }
+
+    fun hasSessionCookie(): Boolean {
+        return cookieJar.hasSessionCookie()
     }
 
     suspend fun fetchLoginPage(): Result<LoginPageTokens> = withContext(Dispatchers.IO) {
@@ -187,7 +194,13 @@ class VuLmsNetworkService(
                     parseJsonFallback(rawJson)
                 }
 
-                val entities = parsedList.map { it.toActivityEntity() }
+                val entities = parsedList
+                    .filterNot { raw ->
+                        val t = raw.title?.lowercase().orEmpty()
+                        val c = raw.coursecode?.lowercase().orEmpty()
+                        t.contains("challan") || c.contains("challan") || c == "fee"
+                    }
+                    .map { it.toActivityEntity() }
                 Result.success(CalendarFetchResult(entities, viewState, generator))
             }
         } catch (e: Exception) {
@@ -238,15 +251,15 @@ class VuLmsNetworkService(
     }
 
     /**
-     * GET https://vulms.vu.edu.pk/AccountBook/AccountBook.aspx to extract paid challan IDs.
+     * GET https://vulms.vu.edu.pk/AccountBook/AccountBook.aspx to fetch all Challan records.
      */
-    suspend fun fetchAccountBookPaidChallans(): Result<Set<String>> = withContext(Dispatchers.IO) {
+    suspend fun fetchAccountBook(): Result<List<ChallanEntity>> = withContext(Dispatchers.IO) {
         try {
             val request = Request.Builder()
                 .url(ACCOUNT_BOOK_URL)
                 .header("User-Agent", USER_AGENT)
                 .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-                .header("Referer", "https://vulms.vu.edu.pk/GradeBook/GradeBook.aspx")
+                .header("Referer", "https://vulms.vu.edu.pk/home.aspx")
                 .get()
                 .build()
 
@@ -256,11 +269,159 @@ class VuLmsNetworkService(
                 }
 
                 val html = response.body?.string().orEmpty()
-                val paidChallans = parseAccountBookPaidChallans(html)
-                Result.success(paidChallans)
+                val challans = parseAccountBookChallans(html)
+                Result.success(challans)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching account book", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun fetchAccountBookPaidChallans(): Result<Set<String>> = withContext(Dispatchers.IO) {
+        val challanResult = fetchAccountBook()
+        if (challanResult.isSuccess) {
+            val list = challanResult.getOrNull().orEmpty()
+            val paidSet = list.filter { it.isPaid }.map { it.challanNo }.toSet()
+            Result.success(paidSet)
+        } else {
+            Result.failure(challanResult.exceptionOrNull() ?: IOException("Failed to fetch account book"))
+        }
+    }
+
+    /**
+     * GET https://vulms.vu.edu.pk/ProgressTimeline/ProgressTimeline.aspx to fetch enrolled subjects.
+     */
+    suspend fun fetchCurrentSubjects(): Result<List<EnrolledSubject>> = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder()
+                .url(PROGRESS_TIMELINE_URL)
+                .header("User-Agent", USER_AGENT)
+                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                .header("Referer", "https://vulms.vu.edu.pk/home.aspx")
+                .get()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(IOException("Failed to fetch subjects (HTTP ${response.code})"))
+                }
+
+                val html = response.body?.string().orEmpty()
+                val subjects = parseCurrentSubjectsHtml(html)
+                Result.success(subjects)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching current subjects", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * GET https://vulms.vu.edu.pk/StudentServices/CourseSelection/CourseSelectionClosed.aspx to fetch academic profile.
+     * Primes session at StudentServices.aspx, adds browser headers, and falls back to course selection and profile pages.
+     */
+    suspend fun fetchStudentProfile(): Result<StudentProfile> = withContext(Dispatchers.IO) {
+        val urlsToTry = listOf(
+            COURSE_SELECTION_CLOSED_URL,
+            "https://vulms.vu.edu.pk/StudentServices/CourseSelection/CourseSelection.aspx",
+            "https://vulms.vu.edu.pk/StudentServices/StudentServices.aspx",
+            "https://vulms.vu.edu.pk/Profile/StudentProfile.aspx",
+            "https://vulms.vu.edu.pk/home.aspx"
+        )
+
+        var bestProfile: StudentProfile? = null
+
+        for (targetUrl in urlsToTry) {
+            try {
+                val referer = if (targetUrl == COURSE_SELECTION_CLOSED_URL || targetUrl.contains("CourseSelection")) {
+                    "https://vulms.vu.edu.pk/StudentServices/StudentServices.aspx"
+                } else {
+                    "https://vulms.vu.edu.pk/home.aspx"
+                }
+
+                val request = Request.Builder()
+                    .url(targetUrl)
+                    .header("User-Agent", USER_AGENT)
+                    .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/jxl,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+                    .header("Accept-Language", "en-US,en;q=0.9")
+                    .header("Cache-Control", "no-cache")
+                    .header("Pragma", "no-cache")
+                    .header("Upgrade-Insecure-Requests", "1")
+                    .header("Referer", referer)
+                    .get()
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val responseUrl = response.request.url.toString()
+                        val html = response.body?.string().orEmpty()
+
+                        // Detect login redirect or session expiry
+                        if (responseUrl.contains("LMS_LP", ignoreCase = true) ||
+                            html.contains("txtStudentID", ignoreCase = true) ||
+                            html.contains("Session Expired", ignoreCase = true)
+                        ) {
+                            Log.w(TAG, "Student profile fetch: session expired or redirected to login ($responseUrl)")
+                            return@withContext Result.failure(IOException("Session expired, authentication required"))
+                        }
+
+                        val profile = parseStudentProfileHtml(html)
+                        if (profile.studentId.isNotEmpty() && profile.cgpa.isNotEmpty()) {
+                            return@withContext Result.success(profile)
+                        }
+                        if (profile.studentId.isNotEmpty() || profile.studentName.isNotEmpty()) {
+                            if (bestProfile == null || (bestProfile?.cgpa.isNullOrEmpty() && profile.cgpa.isNotEmpty())) {
+                                bestProfile = profile
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Error fetching student profile from $targetUrl: ${e.message}")
+            }
+        }
+
+        if (bestProfile != null && (bestProfile!!.studentId.isNotEmpty() || bestProfile!!.studentName.isNotEmpty() || bestProfile!!.cgpa.isNotEmpty())) {
+            return@withContext Result.success(bestProfile!!)
+        }
+
+        Result.failure(IOException("Failed to fetch student academic profile from VU LMS (Session may have expired)"))
+    }
+
+    /**
+     * GET https://vulms.vu.edu.pk/StudentServices/Registrar%20Office/PrintStudentECard.aspx to download E-Card PDF.
+     */
+    suspend fun downloadStudentECard(outputFile: java.io.File): Result<java.io.File> = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder()
+                .url(STUDENT_ECARD_URL)
+                .header("User-Agent", USER_AGENT)
+                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/jxl,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+                .header("Accept-Language", "en-US,en;q=0.9")
+                .header("Cache-Control", "no-cache")
+                .header("Pragma", "no-cache")
+                .header("Referer", STUDENT_ECARD_VIEW_URL)
+                .get()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(IOException("Failed to download E-Card PDF (HTTP ${response.code})"))
+                }
+
+                val body = response.body ?: return@withContext Result.failure(IOException("Empty response body for student card"))
+                val bytes = body.bytes()
+                if (bytes.size < 100) {
+                    return@withContext Result.failure(IOException("Downloaded E-Card file is too small or invalid"))
+                }
+
+                outputFile.parentFile?.mkdirs()
+                outputFile.writeBytes(bytes)
+                Result.success(outputFile)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error downloading student E-Card", e)
             Result.failure(e)
         }
     }
@@ -390,29 +551,356 @@ class VuLmsNetworkService(
         return keys
     }
 
-    private fun parseAccountBookPaidChallans(html: String): Set<String> {
-        val paidChallans = mutableSetOf<String>()
+    fun parseAccountBookChallans(html: String): List<ChallanEntity> {
+        val list = mutableListOf<ChallanEntity>()
+        val indexSet = mutableSetOf<String>()
 
-        // Look for challan blocks: Challan No. XXXXXXXX
-        val challanBlockPattern = Pattern.compile(
-            """Challan No\.\s*(\d+)[\s\S]*?(?=Challan No\.|\Z)""",
-            Pattern.CASE_INSENSITIVE
-        )
-        val matcher = challanBlockPattern.matcher(html)
-        while (matcher.find()) {
-            val challanId = matcher.group(1).orEmpty()
-            val block = matcher.group(0).orEmpty()
+        val viewState = extractHiddenField(html, "__VIEWSTATE")
+        val viewStateGenerator = extractHiddenField(html, "__VIEWSTATEGENERATOR")
+        val previousPage = extractHiddenField(html, "__PREVIOUSPAGE")
 
-            val isPaid = block.contains("title=\"Paid\"", ignoreCase = true) ||
-                    block.contains("Paid.png", ignoreCase = true) ||
-                    (block.contains("style=\"color:Green;\"", ignoreCase = true) && !block.contains("UnPaid", ignoreCase = true))
+        // Find all indices from lblDChallanType_X or lbl_X or hlPrint_X or hlPay_X
+        val indexPattern = Pattern.compile("""id=["'][^"']*(?:lblDChallanType|lbl|hlPrint|hlPay)_(\d+)["']""", Pattern.CASE_INSENSITIVE)
+        val indexMatcher = indexPattern.matcher(html)
+        while (indexMatcher.find()) {
+            indexSet.add(indexMatcher.group(1).orEmpty())
+        }
 
-            if (isPaid && challanId.isNotEmpty()) {
-                paidChallans.add(challanId)
+        for (idx in indexSet.sortedBy { it.toIntOrNull() ?: 0 }) {
+            val challanNo = extractSpanText(html, "lbl_$idx").ifEmpty { extractSpanText(html, "lblChallanNo_$idx") }
+            val challanType = extractSpanText(html, "lblDChallanType_$idx").ifEmpty { "Tuition / Semester Fee" }
+            val payable = extractSpanText(html, "lblPayableAmount_$idx")
+            val paid = extractSpanText(html, "lblPaidAmount_$idx")
+            val balance = extractSpanText(html, "lblrbalance_$idx")
+            val dueDate = extractSpanText(html, "lblduedate_$idx")
+            val paidDate = extractSpanText(html, "lblpaiddate_$idx")
+
+            // Determine if paid
+            val rowPattern = Pattern.compile(
+                """(?:id=["'][^"']*grdaccountbook_pnl_${idx}["'][\s\S]*?(?=id=["'][^"']*grdaccountbook_pnl_|\Z)|<tr[^>]*>[\s\S]*?_${idx}["'][\s\S]*?</tr>)""",
+                Pattern.CASE_INSENSITIVE
+            )
+            val rowMatcher = rowPattern.matcher(html)
+            val rowHtml = if (rowMatcher.find()) rowMatcher.group(0).orEmpty() else ""
+
+            val hasUnpaidMarker = rowHtml.contains("UnpaidDiv", ignoreCase = true) ||
+                    paidDate.contains("unpaid", ignoreCase = true) ||
+                    rowHtml.contains("title=\"Pay Now\"", ignoreCase = true)
+
+            val isPaid = !hasUnpaidMarker && (
+                    rowHtml.contains("title=\"Paid\"", ignoreCase = true) ||
+                    rowHtml.contains("Paid.png", ignoreCase = true) ||
+                    (paidDate.isNotBlank() && paidDate != "-" && (balance == "0" || balance.isEmpty()))
+            )
+
+            // Extract print voucher preview URL: ChallanPrintPreview.aspx?ref=...&fref=...
+            var printUrl = ""
+            val printPattern = Pattern.compile("""ChallanPrintPreview\.aspx\?ref=[^"'\s,)<>]+""", Pattern.CASE_INSENSITIVE)
+            val pm1 = printPattern.matcher(rowHtml)
+            if (pm1.find()) {
+                val rel = pm1.group(0).orEmpty().replace("&amp;", "&").replace("&quot;", "").trimEnd(',', '"', '\'', ')')
+                printUrl = "https://vulms.vu.edu.pk/AccountBook/$rel"
+            } else {
+                val printAroundIdx = Pattern.compile("""hlPrint_${idx}["'][\s\S]*?(ChallanPrintPreview\.aspx\?ref=[^"'\s,)<>]+)""", Pattern.CASE_INSENSITIVE).matcher(html)
+                if (printAroundIdx.find()) {
+                    val rel = printAroundIdx.group(1).orEmpty().replace("&amp;", "&").replace("&quot;", "").trimEnd(',', '"', '\'', ')')
+                    printUrl = "https://vulms.vu.edu.pk/AccountBook/$rel"
+                } else if (challanNo.isNotEmpty()) {
+                    printUrl = "https://vulms.vu.edu.pk/AccountBook/PrintChallan.aspx?ChallanNo=$challanNo"
+                }
+            }
+
+            // Extract pay with card (IPG) URL: https://vulms.vu.edu.pk/IPG/Payment.aspx?ref=...
+            var payCardUrl = ""
+            val payUrlPattern = Pattern.compile("""https://vulms\.vu\.edu\.pk/IPG/Payment\.aspx\?ref=[^"'\s,)<>]+""", Pattern.CASE_INSENSITIVE)
+            val payMatcher = payUrlPattern.matcher(rowHtml)
+            if (payMatcher.find()) {
+                payCardUrl = payMatcher.group(0).orEmpty().replace("&amp;", "&").replace("&quot;", "").trimEnd(',', '"', '\'', ')')
+            } else {
+                val payAroundIdx = Pattern.compile("""hlPay_${idx}["'][\s\S]*?(https://vulms\.vu\.edu\.pk/IPG/Payment\.aspx\?ref=[^"'\s,)<>]+)""", Pattern.CASE_INSENSITIVE).matcher(html)
+                if (payAroundIdx.find()) {
+                    payCardUrl = payAroundIdx.group(1).orEmpty().replace("&amp;", "&").replace("&quot;", "").trimEnd(',', '"', '\'', ')')
+                }
+            }
+
+            // Extract pay with card control name: e.g. ctl00$MainContent$grdaccountbook$ctl24$hlPay
+            var payControlName = "ctl00${'$'}MainContent${'$'}grdaccountbook${'$'}ctl${idx}${'$'}hlPay"
+            val ctrlPattern = Pattern.compile("""name=["'](ctl00\${'$'}MainContent\${'$'}grdaccountbook\${'$'}[^"']*hlPay[^"']*)["']""", Pattern.CASE_INSENSITIVE).matcher(rowHtml)
+            if (ctrlPattern.find()) {
+                payControlName = ctrlPattern.group(1).orEmpty()
+            } else {
+                val ctrlAroundIdx = Pattern.compile("""name=["'](ctl00\${'$'}MainContent\${'$'}grdaccountbook\${'$'}[^"']*hlPay[^"']*)["'][^>]*id=["'][^"']*hlPay_${idx}["']""", Pattern.CASE_INSENSITIVE).matcher(html)
+                if (ctrlAroundIdx.find()) {
+                    payControlName = ctrlAroundIdx.group(1).orEmpty()
+                }
+            }
+
+            if (challanNo.isNotEmpty() || payable.isNotEmpty()) {
+                list.add(
+                    ChallanEntity(
+                        challanNo = challanNo.ifEmpty { "CH-$idx" },
+                        challanType = challanType,
+                        payableAmount = payable,
+                        paidAmount = paid,
+                        balance = balance,
+                        dueDate = dueDate,
+                        paidDate = paidDate,
+                        isPaid = isPaid,
+                        printUrl = printUrl,
+                        payCardUrl = payCardUrl,
+                        payControlName = payControlName,
+                        viewState = viewState,
+                        viewStateGenerator = viewStateGenerator,
+                        previousPage = previousPage
+                    )
+                )
             }
         }
 
-        return paidChallans
+        // Fallback if ASP.NET span IDs were not matched
+        if (list.isEmpty()) {
+            val challanBlockPattern = Pattern.compile(
+                """Challan No\.\s*(\d+)[\s\S]*?(?=Challan No\.|\Z)""",
+                Pattern.CASE_INSENSITIVE
+            )
+            val matcher = challanBlockPattern.matcher(html)
+            while (matcher.find()) {
+                val challanId = matcher.group(1).orEmpty()
+                val block = matcher.group(0).orEmpty()
+                val isPaid = block.contains("title=\"Paid\"", ignoreCase = true) ||
+                        block.contains("Paid.png", ignoreCase = true) ||
+                        (block.contains("style=\"color:Green;\"", ignoreCase = true) && !block.contains("UnPaid", ignoreCase = true))
+
+                val dueMatcher = Pattern.compile("""Due\s*Date[:\s]*([0-9A-Za-z\s-]+)""", Pattern.CASE_INSENSITIVE).matcher(block)
+                val dueDate = if (dueMatcher.find()) dueMatcher.group(1).orEmpty().trim() else ""
+
+                list.add(
+                    ChallanEntity(
+                        challanNo = challanId,
+                        challanType = "VU Fee Challan",
+                        payableAmount = "",
+                        paidAmount = "",
+                        balance = if (isPaid) "0" else "",
+                        dueDate = dueDate,
+                        paidDate = if (isPaid) "Paid" else "-",
+                        isPaid = isPaid,
+                        printUrl = "https://vulms.vu.edu.pk/AccountBook/PrintChallan.aspx?ChallanNo=$challanId"
+                    )
+                )
+            }
+        }
+
+        return list
+    }
+
+    private fun parseCurrentSubjectsHtml(html: String): List<EnrolledSubject> {
+        val subjects = mutableListOf<EnrolledSubject>()
+
+        // Look for tab list anchor elements: <a ... class="nav-link ...">CS301-Data Structures</a>
+        val anchorPattern = Pattern.compile(
+            """<a[^>]*data-toggle=["']tab["'][^>]*>([^<]+)</a>""",
+            Pattern.CASE_INSENSITIVE
+        )
+        val matcher = anchorPattern.matcher(html)
+        while (matcher.find()) {
+            val text = matcher.group(1)?.trim().orEmpty()
+            if (text.isNotEmpty() && !text.equals("Home", ignoreCase = true)) {
+                if (text.contains("-")) {
+                    val code = text.substringBefore("-").trim().uppercase()
+                    val title = text.substringAfter("-").trim()
+                    subjects.add(EnrolledSubject(code, title))
+                } else {
+                    subjects.add(EnrolledSubject(text.uppercase(), text))
+                }
+            }
+        }
+
+        // Fallback: search nav-link text inside nav-tabs
+        if (subjects.isEmpty()) {
+            val navPattern = Pattern.compile(
+                """<ul[^>]*class=["'][^"']*nav-tabs[^"']*["'][^>]*>([\s\S]*?)</ul>""",
+                Pattern.CASE_INSENSITIVE
+            )
+            val navMatcher = navPattern.matcher(html)
+            if (navMatcher.find()) {
+                val navHtml = navMatcher.group(1).orEmpty()
+                val itemMatcher = Pattern.compile("""<a[^>]*>([^<]+)</a>""", Pattern.CASE_INSENSITIVE).matcher(navHtml)
+                while (itemMatcher.find()) {
+                    val text = itemMatcher.group(1)?.trim().orEmpty()
+                    if (text.isNotEmpty() && !text.equals("Home", ignoreCase = true)) {
+                        val code = if (text.contains("-")) text.substringBefore("-").trim().uppercase() else text.uppercase()
+                        val title = if (text.contains("-")) text.substringAfter("-").trim() else text
+                        subjects.add(EnrolledSubject(code, title))
+                    }
+                }
+            }
+        }
+
+        return subjects.distinctBy { it.code }
+    }
+
+    fun parseStudentProfileHtml(html: String): StudentProfile {
+        if (html.isBlank()) return StudentProfile()
+
+        // 1. First, parse all label-value pairs from the table:
+        // Table in CourseSelectionClosed.aspx has rows:
+        // <tr><td ... class="label" ...>LABEL</td> <td ... class="txt" ...>VALUE</td></tr>
+        val tableData = mutableMapOf<String, String>()
+
+        val labelTxtPattern = Pattern.compile(
+            """<td[^>]*class=["'][^"']*label[^"']*["'][^>]*>([\s\S]*?)</td>\s*<td[^>]*class=["'][^"']*txt[^"']*["'][^>]*>([\s\S]*?)</td>""",
+            Pattern.CASE_INSENSITIVE
+        )
+        val ltMatcher = labelTxtPattern.matcher(html)
+        while (ltMatcher.find()) {
+            val rawLabel = ltMatcher.group(1).orEmpty()
+                .replace(Regex("<.*?>"), " ")
+                .replace("&nbsp;", " ")
+                .replace(Regex("\\s+"), " ")
+                .trim()
+                .lowercase()
+            val rawValue = ltMatcher.group(2).orEmpty()
+                .replace(Regex("<.*?>"), " ")
+                .replace("&nbsp;", " ")
+                .replace(Regex("\\s+"), " ")
+                .trim()
+            if (rawLabel.isNotEmpty() && rawValue.isNotEmpty()) {
+                tableData[rawLabel] = rawValue
+            }
+        }
+
+        // Helper to extract by matching keywords in tableData
+        fun findFromTableData(vararg keywords: String, notContains: String? = null): String {
+            for ((k, v) in tableData) {
+                if (notContains != null && k.contains(notContains.lowercase())) continue
+                if (keywords.any { k.contains(it.lowercase()) }) {
+                    return v
+                }
+            }
+            return ""
+        }
+
+        // Fallback cell extractor if class="label" / "txt" are absent
+        fun extractCell(labelRegex: String): String {
+            val p = Pattern.compile(
+                """<td[^>]*>(?:(?!<td)[\s\S])*?(?:$labelRegex)(?:(?!<td)[\s\S])*?</td>\s*<td[^>]*>([\s\S]*?)</td>""",
+                Pattern.CASE_INSENSITIVE
+            )
+            val m = p.matcher(html)
+            if (m.find()) {
+                val clean = m.group(1).orEmpty()
+                    .replace(Regex("<.*?>"), " ")
+                    .replace("&nbsp;", " ")
+                    .replace(Regex("\\s+"), " ")
+                    .trim()
+                if (clean.isNotEmpty()) return clean
+            }
+            return ""
+        }
+
+        var studentId = findFromTableData("student id").ifEmpty { extractCell("""Student\s*ID""") }
+        var name = findFromTableData("name", notContains = "semester").ifEmpty { extractCell("""\bName\b""") }
+        if (name.isEmpty()) name = extractCell("""Student\s*Name""")
+        var program = findFromTableData("study program", "program").ifEmpty { extractCell("""Study\s*program""") }
+        var effectiveCgpa = findFromTableData("effective cgpa").ifEmpty { extractCell("""Effective\s*CGPA""") }
+        if (effectiveCgpa.isEmpty()) {
+            val effMatcher = Pattern.compile("""Effective\s*CGPA[:\s<>/a-zA-Z="'-]*?([0-4]\.\d{1,2})""", Pattern.CASE_INSENSITIVE).matcher(html)
+            if (effMatcher.find()) {
+                effectiveCgpa = effMatcher.group(1).orEmpty()
+            }
+        }
+
+        var cgpa = findFromTableData("cgpa", notContains = "effective")
+            .ifEmpty { extractCell("""(?<!Effective\s)\bCGPA\b""") }
+            .ifEmpty { extractCell("""\bCGPA:""") }
+
+        if (cgpa.isEmpty()) {
+            val cgpaMatcher = Pattern.compile("""(?<!Effective\s)\bCGPA[:\s<>/a-zA-Z="'-]*?([0-4]\.\d{1,2})""", Pattern.CASE_INSENSITIVE).matcher(html)
+            if (cgpaMatcher.find()) {
+                cgpa = cgpaMatcher.group(1).orEmpty()
+            }
+        }
+        if (cgpa.isEmpty()) {
+            val generalCgpa = Pattern.compile("""\bCGPA[:\s]*([0-4]\.\d{1,2})""", Pattern.CASE_INSENSITIVE).matcher(html)
+            if (generalCgpa.find()) {
+                cgpa = generalCgpa.group(1).orEmpty()
+            }
+        }
+        if (cgpa.isEmpty()) cgpa = effectiveCgpa
+        if (effectiveCgpa.isEmpty()) effectiveCgpa = cgpa
+
+        val earned = findFromTableData("credits earned", "credit earned", "earned").ifEmpty { extractCell("""Credits?\s*Earned""") }
+        val exempted = findFromTableData("credits exempted", "credit exempted", "exempted").ifEmpty { extractCell("""Credits?\s*Exempted""") }
+        val semNo = findFromTableData("current semester", "semester no")
+            .ifEmpty { extractCell("""Current\s*Semester(?:\s*No)?""") }
+            .replace(Regex("(?i)semester|sem|no|:"), "")
+            .trim()
+
+        // Parse Semester Name from span id MainContent_lblSemester or lblSemester1/2
+        var semName = ""
+        val semPattern = Pattern.compile("""id=["'][^"']*lblSemester\d*["'][^>]*>([^<]+)</span>""", Pattern.CASE_INSENSITIVE)
+        val semMatcher = semPattern.matcher(html)
+        if (semMatcher.find()) {
+            semName = semMatcher.group(1)?.trim().orEmpty()
+        }
+        if (semName.isEmpty()) {
+            val semPattern2 = Pattern.compile("""Course Selection\s*\(([^)]+)\)""", Pattern.CASE_INSENSITIVE)
+            val sm2 = semPattern2.matcher(html)
+            if (sm2.find()) {
+                semName = sm2.group(1)?.replace(Regex("<.*?>"), " ")?.trim().orEmpty()
+            }
+        }
+
+        // Top bar user link fallback: "HANZLA REHMAN<br />(bc250417449)"
+        if (name.isEmpty() || studentId.isEmpty()) {
+            val topBarPattern = Pattern.compile(
+                """<span[^>]*class=["'][^"']*m-nav__link-text[^"']*["'][^>]*>([\s\S]*?)</span>""",
+                Pattern.CASE_INSENSITIVE
+            )
+            val tbMatcher = topBarPattern.matcher(html)
+            if (tbMatcher.find()) {
+                val text = tbMatcher.group(1).orEmpty().replace(Regex("<.*?>"), "\n")
+                val lines = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
+                if (lines.isNotEmpty() && name.isEmpty()) name = lines[0]
+                val idLine = lines.firstOrNull { it.contains("bc", ignoreCase = true) || it.contains("mc", ignoreCase = true) }
+                if (idLine != null && studentId.isEmpty()) {
+                    studentId = idLine.replace("(", "").replace(")", "").trim()
+                }
+            }
+        }
+
+        if (name.isEmpty()) {
+            val userPicName = Pattern.compile("""<span[^>]*class=["'][^"']*m-card-user__name[^"']*["'][^>]*>([^<]+)</span>""", Pattern.CASE_INSENSITIVE).matcher(html)
+            if (userPicName.find()) name = userPicName.group(1)?.trim().orEmpty()
+        }
+
+        if (studentId.isEmpty()) {
+            val altIdPattern = Pattern.compile("""<img[^>]*alt=["'](bc\d+|mc\d+)[^"']*["']""", Pattern.CASE_INSENSITIVE).matcher(html)
+            if (altIdPattern.find()) studentId = altIdPattern.group(1)?.trim().orEmpty()
+        }
+
+        if (program.isEmpty()) {
+            val emailProg = Pattern.compile("""<a[^>]*class=["'][^"']*m-card-user__email[^"']*["'][^>]*>([^<]+)</a>""", Pattern.CASE_INSENSITIVE).matcher(html)
+            if (emailProg.find()) program = emailProg.group(1)?.trim().orEmpty()
+        }
+
+        return StudentProfile(
+            studentId = studentId,
+            studentName = name,
+            studyProgram = program,
+            cgpa = cgpa,
+            effectiveCgpa = effectiveCgpa,
+            creditsEarned = earned,
+            creditsExempted = exempted,
+            currentSemesterNo = semNo,
+            semesterName = semName
+        )
+    }
+
+    private fun extractSpanText(html: String, spanIdSuffix: String): String {
+        val p = Pattern.compile("""id=["'][^"']*${Pattern.quote(spanIdSuffix)}["'][^>]*>([^<]*)</span>""", Pattern.CASE_INSENSITIVE)
+        val m = p.matcher(html)
+        return if (m.find()) m.group(1)?.trim().orEmpty() else ""
     }
 
     private fun extractHiddenField(html: String, fieldName: String): String {
@@ -495,6 +983,10 @@ class VuLmsNetworkService(
         private const val SIGN_OUT_URL = "https://vulms.vu.edu.pk/SignOut.aspx"
         private const val CALENDAR_PAGE_URL = "https://vulms.vu.edu.pk/ActivityCalendar/ActivityCalendar.aspx"
         private const val ACCOUNT_BOOK_URL = "https://vulms.vu.edu.pk/AccountBook/AccountBook.aspx"
+        private const val PROGRESS_TIMELINE_URL = "https://vulms.vu.edu.pk/ProgressTimeline/ProgressTimeline.aspx"
+        private const val COURSE_SELECTION_CLOSED_URL = "https://vulms.vu.edu.pk/StudentServices/CourseSelection/CourseSelectionClosed.aspx"
+        private const val STUDENT_ECARD_URL = "https://vulms.vu.edu.pk/StudentServices/Registrar%20Office/PrintStudentECard.aspx"
+        private const val STUDENT_ECARD_VIEW_URL = "https://vulms.vu.edu.pk/StudentServices/Registrar%20Office/PrintStudentECardView.aspx"
         private const val PROFILE_IMAGE_URL = "https://vulms.vu.edu.pk/Profile/GridImageTemplate.aspx"
         private const val UPDATE_CHECK_URL = "https://raw.githubusercontent.com/hanzlarehman404/vu-lms-reminder/default/update.json"
         const val USER_AGENT = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"

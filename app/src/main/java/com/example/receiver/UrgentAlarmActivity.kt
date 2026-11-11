@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
+import android.media.MediaPlayer
 import android.media.Ringtone
 import android.media.RingtoneManager
 import android.net.Uri
@@ -22,9 +23,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Alarm
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Snooze
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -37,10 +38,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.data.local.AppDatabase
 import com.example.data.local.PreferencesManager
+import com.example.data.repository.VuLmsRepository
+import com.example.receiver.NotificationHelper
 import com.example.ui.theme.VuLmsTheme
-import com.example.ui.theme.VuNavy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -50,6 +51,7 @@ import java.util.Locale
 
 class UrgentAlarmActivity : ComponentActivity() {
 
+    private var mediaPlayer: MediaPlayer? = null
     private var ringtone: Ringtone? = null
     private var vibrator: Vibrator? = null
 
@@ -93,24 +95,26 @@ class UrgentAlarmActivity : ComponentActivity() {
                         AlarmScheduler(this).scheduleSnooze(activityId, minutes)
                         finish()
                     },
-                    onMarkDone = {
+                    onOkAndResync = {
                         stopAlarm()
                         CoroutineScope(Dispatchers.IO).launch {
-                            AppDatabase.getDatabase(this@UrgentAlarmActivity)
-                                .activityDao()
-                                .setCompleted(activityId, true)
-                            AlarmScheduler(this@UrgentAlarmActivity).cancelAlarmsForActivity(activityId)
+                            val repo = VuLmsRepository(this@UrgentAlarmActivity)
+                            val syncRes = repo.syncActivities()
+                            val count = syncRes.getOrDefault(0)
+                            NotificationHelper(this@UrgentAlarmActivity).showResyncConfirmationNotification(
+                                activitiesCount = count,
+                                message = "VU LMS synced! Completed activities verified automatically."
+                            )
                         }
                         finish()
                     },
                     onOpenLms = {
                         stopAlarm()
-                        if (url.isNotEmpty()) {
-                            try {
-                                val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                startActivity(browserIntent)
-                            } catch (ignored: Exception) {}
-                        }
+                        val targetUrl = url.ifEmpty { "https://vulms.vu.edu.pk/" }
+                        try {
+                            val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl))
+                            startActivity(browserIntent)
+                        } catch (ignored: Exception) {}
                         finish()
                     }
                 )
@@ -125,17 +129,36 @@ class UrgentAlarmActivity : ComponentActivity() {
             try {
                 val alarmUri: Uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
                     ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-                ringtone = RingtoneManager.getRingtone(this, alarmUri).apply {
+
+                mediaPlayer = MediaPlayer().apply {
+                    setDataSource(this@UrgentAlarmActivity, alarmUri)
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                        audioAttributes = AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_ALARM)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                            .build()
+                        setAudioAttributes(
+                            AudioAttributes.Builder()
+                                .setUsage(AudioAttributes.USAGE_ALARM)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                                .build()
+                        )
                     }
-                    play()
+                    isLooping = true
+                    prepare()
+                    start()
                 }
             } catch (e: Exception) {
-                // Ignore ringtone failure
+                // Fallback to RingtoneManager
+                try {
+                    val alarmUri: Uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                        ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                    ringtone = RingtoneManager.getRingtone(this, alarmUri).apply {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                            audioAttributes = AudioAttributes.Builder()
+                                .setUsage(AudioAttributes.USAGE_ALARM)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                                .build()
+                        }
+                        play()
+                    }
+                } catch (ignored: Exception) {}
             }
         }
 
@@ -149,7 +172,8 @@ class UrgentAlarmActivity : ComponentActivity() {
                     getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
                 }
 
-                val pattern = longArrayOf(0, 800, 400, 800, 400, 800)
+                // Repeat indefinitely from index 0
+                val pattern = longArrayOf(0, 900, 400, 900, 400)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0))
                 } else {
@@ -164,8 +188,19 @@ class UrgentAlarmActivity : ComponentActivity() {
 
     private fun stopAlarm() {
         try {
+            mediaPlayer?.stop()
+            mediaPlayer?.release()
+            mediaPlayer = null
+        } catch (ignored: Exception) {}
+
+        try {
             ringtone?.stop()
+            ringtone = null
+        } catch (ignored: Exception) {}
+
+        try {
             vibrator?.cancel()
+            vibrator = null
         } catch (ignored: Exception) {}
     }
 
@@ -190,7 +225,7 @@ fun UrgentAlarmScreen(
     endDate: Long,
     onDismiss: () -> Unit,
     onSnooze: (Int) -> Unit,
-    onMarkDone: () -> Unit,
+    onOkAndResync: () -> Unit,
     onOpenLms: () -> Unit
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
@@ -334,29 +369,29 @@ fun UrgentAlarmScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Button(
-                    onClick = onOpenLms,
+                    onClick = onOkAndResync,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(52.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00A65A)),
                     shape = RoundedCornerShape(14.dp)
                 ) {
-                    Icon(Icons.Default.OpenInBrowser, contentDescription = null)
+                    Icon(Icons.Default.Refresh, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Open Activity in VU LMS", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("OK & Resync Now", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
 
-                Button(
-                    onClick = onMarkDone,
+                OutlinedButton(
+                    onClick = onOpenLms,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E3A8A)),
-                    shape = RoundedCornerShape(14.dp)
+                        .height(48.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF60A5FA))
                 ) {
-                    Icon(Icons.Default.Check, contentDescription = null)
+                    Icon(Icons.Default.OpenInBrowser, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Mark as Completed", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Text("Open VU LMS", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                 }
 
                 Row(

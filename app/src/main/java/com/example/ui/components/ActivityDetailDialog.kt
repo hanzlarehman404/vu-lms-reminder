@@ -35,7 +35,7 @@ import java.util.Locale
 fun ActivityDetailDialog(
     activity: ActivityEntity,
     onDismiss: () -> Unit,
-    onToggleCompletion: (Boolean) -> Unit
+    onToggleCompletion: ((Boolean) -> Unit)? = null
 ) {
     val type = ActivityType.fromString(activity.activityType, activity.title)
     
@@ -168,7 +168,7 @@ fun ActivityDetailDialog(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // Toggle Completion (Only for available activities)
+                // Automatic LMS Submission Status
                 Surface(
                     shape = RoundedCornerShape(14.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
@@ -178,39 +178,29 @@ fun ActivityDetailDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(14.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                            Icon(
-                                imageVector = if (isUpcoming) Icons.Default.LockClock else Icons.Default.CheckCircle,
-                                contentDescription = null,
-                                tint = if (activity.isCompleted) VuGreen else MaterialTheme.colorScheme.onSurfaceVariant
+                        Icon(
+                            imageVector = if (isUpcoming) Icons.Default.LockClock else Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = if (activity.isCompleted) VuGreen else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = if (isUpcoming) "Status: Upcoming (Opens $startStr)"
+                                       else if (activity.isCompleted) "Status: Completed (Verified on LMS)"
+                                       else "Status: Pending Submission",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = if (activity.isCompleted) VuGreen else MaterialTheme.colorScheme.onSurface
                             )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(
-                                    text = if (isUpcoming) "Status: Upcoming (Opens $startStr)"
-                                           else if (activity.isCompleted) "Status: Completed"
-                                           else "Status: Pending",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp
-                                )
-                                Text(
-                                    text = if (isUpcoming) "Cannot be marked done before opening date"
-                                           else if (activity.isCompleted) "Alarms muted for this task"
-                                           else "Alarms active before deadline",
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        if (!isUpcoming) {
-                            Switch(
-                                checked = activity.isCompleted,
-                                onCheckedChange = onToggleCompletion,
-                                colors = SwitchDefaults.colors(checkedThumbColor = VuGreen)
+                            Text(
+                                text = if (isUpcoming) "Opens soon on official VU LMS"
+                                       else if (activity.isCompleted) "Submission detected & verified automatically from LMS ToDo"
+                                       else "Reminders active. Resync anytime to auto-check submission status.",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }

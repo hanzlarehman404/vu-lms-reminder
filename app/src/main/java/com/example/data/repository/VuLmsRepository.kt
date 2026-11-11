@@ -13,6 +13,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 
+import com.example.data.model.ChallanEntity
+import com.example.data.model.EnrolledSubject
+import com.example.data.model.StudentProfile
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import java.io.File
+
 class VuLmsRepository(
     private val context: Context,
     private val dao: ActivityDao = AppDatabase.getDatabase(context).activityDao(),
@@ -21,6 +29,15 @@ class VuLmsRepository(
     private val alarmScheduler: AlarmScheduler = AlarmScheduler(context)
 ) {
     val allActivities: Flow<List<ActivityEntity>> = dao.getAllActivities()
+
+    private val _challansFlow = MutableStateFlow<List<ChallanEntity>>(emptyList())
+    val challans: StateFlow<List<ChallanEntity>> = _challansFlow.asStateFlow()
+
+    private val _subjectsFlow = MutableStateFlow<List<EnrolledSubject>>(prefs.getCurrentSubjects())
+    val currentSubjects: StateFlow<List<EnrolledSubject>> = _subjectsFlow.asStateFlow()
+
+    private val _studentProfileFlow = MutableStateFlow(prefs.getStudentProfile())
+    val studentProfile: StateFlow<StudentProfile> = _studentProfileFlow.asStateFlow()
 
     suspend fun login(studentId: String, pass: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
@@ -40,8 +57,15 @@ class VuLmsRepository(
             // Save login state
             prefs.saveLogin(studentId, pass)
 
-            // Step 3: Fetch activities immediately
+            // Step 3: Fetch activities and all LMS data immediately
             syncActivitiesInternal()
+
+            // Step 4: Ensure student profile is refreshed
+            try {
+                refreshStudentProfile()
+            } catch (pe: Exception) {
+                Log.w(TAG, "Post-login academic profile sync note: ${pe.message}")
+            }
 
             Result.success(Unit)
         } catch (e: Exception) {
@@ -112,50 +136,161 @@ class VuLmsRepository(
             }
         }
 
-        // 2. Fetch Account Book to check paid challans
-        val paidChallansResult = networkService.fetchAccountBookPaidChallans()
-        if (paidChallansResult.isSuccess) {
-            val paidChallanIds = paidChallansResult.getOrNull().orEmpty()
-            for (act in remoteActivities) {
-                if (act.activityType.equals("Challan", ignoreCase = true)) {
-                    // Title format: "ChallanID: 27765546"
-                    val challanNumber = act.title.filter { it.isDigit() }
-                    if (challanNumber.isNotEmpty() && paidChallanIds.contains(challanNumber)) {
-                        autoCompletedIds.add(act.id)
-                    }
+        // 2. Fetch Account Book to parse challans
+        try {
+            val challanResult = networkService.fetchAccountBook()
+            if (challanResult.isSuccess) {
+                _challansFlow.value = challanResult.getOrNull().orEmpty()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Account book fetch error", e)
+        }
+
+        // 3. Fetch Enrolled Subjects
+        try {
+            val subjectsResult = networkService.fetchCurrentSubjects()
+            val parsedSubjects = subjectsResult.getOrNull().orEmpty().toMutableList()
+            // Merge with courses derived from calendar activities
+            val derivedCourses = remoteActivities
+                .filter { it.courseCode.isNotEmpty() && !it.courseCode.equals("FEE", ignoreCase = true) }
+                .groupBy { it.courseCode }
+                .map { (code, acts) ->
+                    val fullTitle = acts.firstOrNull()?.title?.substringAfter(":")?.trim()?.ifEmpty { code } ?: code
+                    EnrolledSubject(code = code, title = fullTitle)
                 }
+            for (dc in derivedCourses) {
+                if (parsedSubjects.none { it.code.equals(dc.code, ignoreCase = true) }) {
+                    parsedSubjects.add(dc)
+                }
+            }
+            if (parsedSubjects.isNotEmpty()) {
+                _subjectsFlow.value = parsedSubjects
+                prefs.saveCurrentSubjects(parsedSubjects)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Current subjects fetch error", e)
+        }
+
+        // 4. Fetch Student Profile
+        try {
+            val profileResult = networkService.fetchStudentProfile()
+            if (profileResult.isSuccess) {
+                var prof = profileResult.getOrThrow()
+                if (prof.studentId.isEmpty()) {
+                    prof = prof.copy(studentId = prefs.getStudentId())
+                }
+                if (prof.studentId.isNotEmpty() || prof.studentName.isNotEmpty() || prof.cgpa.isNotEmpty()) {
+                    _studentProfileFlow.value = prof
+                    prefs.saveStudentProfile(prof)
+                }
+            } else if (_studentProfileFlow.value.studentId.isEmpty() && prefs.getStudentId().isNotEmpty()) {
+                val fallback = _studentProfileFlow.value.copy(studentId = prefs.getStudentId())
+                _studentProfileFlow.value = fallback
+                prefs.saveStudentProfile(fallback)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Student profile fetch error", e)
+            if (_studentProfileFlow.value.studentId.isEmpty() && prefs.getStudentId().isNotEmpty()) {
+                val fallback = _studentProfileFlow.value.copy(studentId = prefs.getStudentId())
+                _studentProfileFlow.value = fallback
+                prefs.saveStudentProfile(fallback)
             }
         }
 
-        // 3. Upsert into Room DB while preserving existing completions
-        dao.upsertPreservingCompletion(remoteActivities, autoCompletedIds)
+        // 5. Fresh sync: wipe old duplicates and refresh database with fresh remote activities
+        val finalActivities = remoteActivities.map { act ->
+            val isDone = autoCompletedIds.contains(act.id)
+            act.copy(isCompleted = isDone)
+        }
+        dao.refreshAll(finalActivities)
         prefs.setLastSyncTime(now)
 
-        // 4. Prune old expired activities (> 7 days past deadline) to keep database small
-        val cutoff = now - (7 * 24 * 3600 * 1000L)
-        dao.deleteOldExpiredActivities(cutoff)
-
-        // 5. Fetch and cache profile avatar if possible
+        // 6. Fetch and cache profile avatar if possible
         try {
             val avatarResult = networkService.fetchProfileAvatar()
             if (avatarResult.isSuccess) {
                 val avatarBytes = avatarResult.getOrThrow()
-                val avatarFile = java.io.File(context.filesDir, "student_avatar.jpg")
+                val avatarFile = File(context.filesDir, "student_avatar.jpg")
                 avatarFile.writeBytes(avatarBytes)
             }
         } catch (e: Exception) {
             Log.w(TAG, "Could not cache profile avatar", e)
         }
 
-        // 6. Reschedule upcoming routine alarms
+        // 7. Reschedule upcoming routine alarms
         val pending = dao.getAvailablePendingActivitiesSync(now)
         alarmScheduler.rescheduleAll(pending)
 
         return remoteActivities.size
     }
 
-    fun getProfileAvatarFile(): java.io.File? {
-        val file = java.io.File(context.filesDir, "student_avatar.jpg")
+    fun getStudentECardFile(): File? {
+        val file = File(context.filesDir, "student_ecard.pdf")
+        return if (file.exists() && file.length() > 0) file else null
+    }
+
+    suspend fun refreshStudentProfile(): Result<StudentProfile> = withContext(Dispatchers.IO) {
+        if (prefs.isLoggedIn() && !networkService.hasSessionCookie()) {
+            val studentId = prefs.getStudentId()
+            val pass = prefs.getPassword()
+            if (studentId.isNotEmpty() && pass.isNotEmpty()) {
+                val tokens = networkService.fetchLoginPage().getOrNull()
+                if (tokens != null) {
+                    networkService.submitLogin(studentId, pass, tokens)
+                }
+            }
+        }
+
+        var profileResult = networkService.fetchStudentProfile()
+        if (profileResult.isFailure && prefs.isLoggedIn()) {
+            val studentId = prefs.getStudentId()
+            val pass = prefs.getPassword()
+            if (studentId.isNotEmpty() && pass.isNotEmpty()) {
+                Log.d(TAG, "Re-authenticating for student profile fetch...")
+                val tokens = networkService.fetchLoginPage().getOrNull()
+                if (tokens != null) {
+                    val loginRes = networkService.submitLogin(studentId, pass, tokens)
+                    if (loginRes.isSuccess) {
+                        profileResult = networkService.fetchStudentProfile()
+                    }
+                }
+            }
+        }
+
+        if (profileResult.isSuccess) {
+            var prof = profileResult.getOrThrow()
+            if (prof.studentId.isEmpty()) {
+                prof = prof.copy(studentId = prefs.getStudentId())
+            }
+            if (prof.studentId.isNotEmpty() || prof.studentName.isNotEmpty() || prof.cgpa.isNotEmpty()) {
+                _studentProfileFlow.value = prof
+                prefs.saveStudentProfile(prof)
+            }
+        }
+
+        try {
+            val subjectsRes = networkService.fetchCurrentSubjects()
+            if (subjectsRes.isSuccess) {
+                val subs = subjectsRes.getOrNull().orEmpty()
+                if (subs.isNotEmpty()) {
+                    _subjectsFlow.value = subs
+                    prefs.saveCurrentSubjects(subs)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Subjects refresh error: ${e.message}")
+        }
+
+        profileResult
+    }
+
+    suspend fun downloadStudentECard(): Result<File> = withContext(Dispatchers.IO) {
+        val target = File(context.filesDir, "student_ecard.pdf")
+        networkService.downloadStudentECard(target)
+    }
+
+    fun getProfileAvatarFile(): File? {
+        val file = File(context.filesDir, "student_avatar.jpg")
         return if (file.exists() && file.length() > 0) file else null
     }
 

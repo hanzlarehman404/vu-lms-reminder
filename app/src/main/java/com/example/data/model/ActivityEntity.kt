@@ -27,7 +27,7 @@ data class ActivityEntity(
      * An activity is available if its opening/start date has arrived and it hasn't expired.
      */
     fun isAvailable(currentTime: Long = System.currentTimeMillis()): Boolean {
-        return startDate <= currentTime && endDate >= currentTime
+        return (startDate <= currentTime && endDate >= currentTime) || isCompleted
     }
 
     /**

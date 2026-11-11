@@ -41,7 +41,18 @@ data class VuRawActivity(
             url.orEmpty()
         }
 
-        val type = ActivityType.fromString(null, cleanTitle).displayName
+        // Detect type from URL, title, or VU color codes (#f39c12 is GDB)
+        var explicitType: String? = null
+        val lowerUrl = url.orEmpty().lowercase()
+        if (lowerUrl.contains("activitytype=gdb") || lowerUrl.contains("gdb") || borderColor?.contains("f39c12", ignoreCase = true) == true) {
+            explicitType = "GDB"
+        } else if (lowerUrl.contains("activitytype=quiz") || lowerUrl.contains("quiz")) {
+            explicitType = "Quiz"
+        } else if (lowerUrl.contains("activitytype=assignment") || lowerUrl.contains("assignment")) {
+            explicitType = "Assignment"
+        }
+
+        val type = ActivityType.fromString(explicitType, cleanTitle, url).displayName
         val color = borderColor ?: "#0D2F62"
 
         return ActivityEntity(

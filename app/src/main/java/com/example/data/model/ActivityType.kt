@@ -19,12 +19,12 @@ enum class ActivityType(
         get() = "$emoji $displayName"
 
     companion object {
-        fun fromString(typeStr: String?, title: String? = ""): ActivityType {
-            val text = "${typeStr.orEmpty()} ${title.orEmpty()}".lowercase()
+        fun fromString(typeStr: String?, title: String? = "", url: String? = ""): ActivityType {
+            val text = "${typeStr.orEmpty()} ${title.orEmpty()} ${url.orEmpty()}".lowercase()
             return when {
                 text.contains("assignment") -> ASSIGNMENT
                 text.contains("quiz") -> QUIZ
-                text.contains("gdb") || text.contains("discussion") -> GDB
+                text.contains("gdb") || text.contains("discussion") || text.contains("activitytype=gdb") -> GDB
                 text.contains("practical") || text.contains("lab") || text.contains("301p") -> PRACTICAL
                 text.contains("challan") || text.contains("fee") -> CHALLAN
                 else -> OTHER

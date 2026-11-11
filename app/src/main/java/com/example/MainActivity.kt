@@ -17,24 +17,33 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.outlined.Badge
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Dashboard
+import androidx.compose.material.icons.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.components.UpdateDialog
+import com.example.ui.screens.AccountBookScreen
 import com.example.ui.screens.CalendarScreen
 import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.LoginScreen
 import com.example.ui.screens.SettingsScreen
+import com.example.ui.screens.StudentPortalScreen
 import com.example.ui.theme.VuLmsTheme
 import com.example.ui.viewmodel.MainViewModel
 
@@ -60,12 +69,48 @@ class MainActivity : ComponentActivity() {
                 val loginState by viewModel.loginState.collectAsStateWithLifecycle()
                 val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
                 val updateInfo by viewModel.updateInfo.collectAsStateWithLifecycle()
+                val showAutoSyncPrompt by viewModel.showAutoSyncPrompt.collectAsStateWithLifecycle()
 
                 // Check for In-App Update dialog
                 updateInfo?.let { info ->
                     UpdateDialog(
                         updateInfo = info,
                         onDismiss = { viewModel.dismissUpdateDialog() }
+                    )
+                }
+
+                // First-time prompt for Auto-Sync on Launch
+                if (isLoggedIn && showAutoSyncPrompt) {
+                    AlertDialog(
+                        onDismissRequest = { viewModel.setAutoSyncChoice(false) },
+                        icon = {
+                            Icon(Icons.Filled.Sync, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        },
+                        title = {
+                            Text("Auto-Sync on Launch", fontWeight = FontWeight.Bold)
+                        },
+                        text = {
+                            Text(
+                                "Would you like VU LMS Reminder to automatically fetch and update your activities, quizzes, assignments, and fee challans whenever you open the app?\n\nYou can change this preference anytime in Settings.",
+                                fontSize = 13.sp
+                            )
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = { viewModel.setAutoSyncChoice(true) },
+                                modifier = Modifier.testTag("auto_sync_enable_button")
+                            ) {
+                                Text("Enable Auto-Sync")
+                            }
+                        },
+                        dismissButton = {
+                            OutlinedButton(
+                                onClick = { viewModel.setAutoSyncChoice(false) },
+                                modifier = Modifier.testTag("auto_sync_manual_button")
+                            ) {
+                                Text("Manual Only")
+                            }
+                        }
                     )
                 }
 
@@ -115,7 +160,7 @@ class MainActivity : ComponentActivity() {
                                             contentDescription = "Dashboard"
                                         )
                                     },
-                                    label = { Text("Dashboard") },
+                                    label = { Text("Activities") },
                                     modifier = Modifier.testTag("nav_item_dashboard")
                                 )
 
@@ -137,7 +182,33 @@ class MainActivity : ComponentActivity() {
                                     onClick = { viewModel.selectTab(2) },
                                     icon = {
                                         Icon(
-                                            if (selectedTab == 2) Icons.Filled.Settings else Icons.Outlined.Settings,
+                                            if (selectedTab == 2) Icons.Filled.ReceiptLong else Icons.Outlined.ReceiptLong,
+                                            contentDescription = "Fees"
+                                        )
+                                    },
+                                    label = { Text("Fees") },
+                                    modifier = Modifier.testTag("nav_item_fees")
+                                )
+
+                                NavigationBarItem(
+                                    selected = selectedTab == 3,
+                                    onClick = { viewModel.selectTab(3) },
+                                    icon = {
+                                        Icon(
+                                            if (selectedTab == 3) Icons.Filled.Badge else Icons.Outlined.Badge,
+                                            contentDescription = "Student"
+                                        )
+                                    },
+                                    label = { Text("Student") },
+                                    modifier = Modifier.testTag("nav_item_student")
+                                )
+
+                                NavigationBarItem(
+                                    selected = selectedTab == 4,
+                                    onClick = { viewModel.selectTab(4) },
+                                    icon = {
+                                        Icon(
+                                            if (selectedTab == 4) Icons.Filled.Settings else Icons.Outlined.Settings,
                                             contentDescription = "Settings"
                                         )
                                     },
@@ -161,6 +232,15 @@ class MainActivity : ComponentActivity() {
                         val studentAvatarFile by viewModel.studentAvatarFile.collectAsStateWithLifecycle()
                         val isCheckingUpdate by viewModel.isCheckingUpdate.collectAsStateWithLifecycle()
                         val manualUpdateResult by viewModel.manualUpdateResult.collectAsStateWithLifecycle()
+                        val activityTypeCounts by viewModel.activityTypeCounts.collectAsStateWithLifecycle()
+
+                        // New tabs state
+                        val challans by viewModel.challans.collectAsStateWithLifecycle()
+                        val currentSubjects by viewModel.currentSubjects.collectAsStateWithLifecycle()
+                        val studentProfile by viewModel.studentProfile.collectAsStateWithLifecycle()
+                        val studentECardFile by viewModel.studentECardFile.collectAsStateWithLifecycle()
+                        val isDownloadingECard by viewModel.isDownloadingECard.collectAsStateWithLifecycle()
+                        val eCardMessage by viewModel.eCardMessage.collectAsStateWithLifecycle()
 
                         Surface(
                             modifier = Modifier
@@ -180,29 +260,44 @@ class MainActivity : ComponentActivity() {
                                     lastSyncTime = lastSyncTime,
                                     isSyncing = isSyncing,
                                     syncMessage = syncMessage,
+                                    typeCounts = activityTypeCounts,
                                     onStatusSelected = { viewModel.setStatus(it) },
                                     onActivityTypeSelected = { viewModel.setActivityType(it) },
                                     onToggleUpcomingOnly = { viewModel.toggleUpcomingOnly(it) },
                                     onSearchQueryChanged = { viewModel.setSearchQuery(it) },
-                                    onToggleCompletion = { id, done -> viewModel.toggleActivityCompleted(id, done) },
-                                    onMarkAllAvailableDone = { viewModel.markAllAvailableAsDone() },
                                     onSyncNow = { viewModel.syncNow() },
                                     onClearSyncMessage = { viewModel.clearSyncMessage() }
                                 )
 
                                 1 -> CalendarScreen(
-                                    activities = allActivities,
-                                    onToggleCompletion = { id, done -> viewModel.toggleActivityCompleted(id, done) }
+                                    activities = allActivities
                                 )
 
-                                2 -> SettingsScreen(
+                                2 -> AccountBookScreen(
+                                    challans = challans,
+                                    isSyncing = isSyncing,
+                                    onSyncNow = { viewModel.syncNow() }
+                                )
+
+                                3 -> StudentPortalScreen(
+                                    studentProfile = studentProfile,
+                                    currentSubjects = currentSubjects,
+                                    studentAvatarFile = studentAvatarFile,
+                                    isDownloadingECard = isDownloadingECard,
+                                    eCardFile = studentECardFile,
+                                    eCardMessage = eCardMessage,
+                                    isSyncing = isSyncing,
+                                    onDownloadECard = { viewModel.downloadECard() },
+                                    onSyncNow = { viewModel.syncNow() }
+                                )
+
+                                4 -> SettingsScreen(
                                     prefs = viewModel.getPreferences(),
                                     studentId = studentId,
                                     studentAvatarFile = studentAvatarFile,
                                     isCheckingUpdate = isCheckingUpdate,
                                     manualUpdateResult = manualUpdateResult,
                                     onLogout = { viewModel.logout() },
-                                    onResetCompletions = { viewModel.resetAllCompletions() },
                                     onCheckUpdate = { viewModel.checkForAppUpdates(isManual = true) },
                                     onDismissManualUpdateResult = { viewModel.dismissManualUpdateResult() },
                                     onSetTheme = { viewModel.setAppTheme(it) }

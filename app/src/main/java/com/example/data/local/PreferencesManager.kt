@@ -44,6 +44,66 @@ class PreferencesManager(context: Context) {
     fun getNotificationRingtone(): String = prefs.getString(KEY_NOTIFICATION_RINGTONE, "alarm") ?: "alarm"
     fun getAppTheme(): String = prefs.getString(KEY_APP_THEME, "system") ?: "system"
 
+    fun isAutoSyncOnLaunch(): Boolean = prefs.getBoolean(KEY_AUTO_SYNC_ON_LAUNCH, true)
+    fun setAutoSyncOnLaunch(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_AUTO_SYNC_ON_LAUNCH, enabled).apply()
+    }
+    fun hasPromptedAutoSync(): Boolean = prefs.getBoolean(KEY_HAS_PROMPTED_AUTO_SYNC, false)
+    fun setHasPromptedAutoSync(prompted: Boolean) {
+        prefs.edit().putBoolean(KEY_HAS_PROMPTED_AUTO_SYNC, prompted).apply()
+    }
+
+    fun getStudentProfile(): com.example.data.model.StudentProfile {
+        val id = prefs.getString("prof_student_id", "").orEmpty().ifEmpty { getStudentId() }
+        val name = prefs.getString("prof_student_name", "").orEmpty()
+        val prog = prefs.getString("prof_study_program", "").orEmpty()
+        val cgpa = prefs.getString("prof_cgpa", "").orEmpty()
+        val eff = prefs.getString("prof_effective_cgpa", "").orEmpty()
+        val earned = prefs.getString("prof_credits_earned", "").orEmpty()
+        val exemp = prefs.getString("prof_credits_exempted", "").orEmpty()
+        val semNo = prefs.getString("prof_semester_no", "").orEmpty()
+        val semName = prefs.getString("prof_semester_name", "").orEmpty()
+        return com.example.data.model.StudentProfile(
+            studentId = id,
+            studentName = name,
+            studyProgram = prog,
+            cgpa = cgpa,
+            effectiveCgpa = eff,
+            creditsEarned = earned,
+            creditsExempted = exemp,
+            currentSemesterNo = semNo,
+            semesterName = semName
+        )
+    }
+
+    fun saveStudentProfile(profile: com.example.data.model.StudentProfile) {
+        prefs.edit()
+            .putString("prof_student_id", profile.studentId)
+            .putString("prof_student_name", profile.studentName)
+            .putString("prof_study_program", profile.studyProgram)
+            .putString("prof_cgpa", profile.cgpa)
+            .putString("prof_effective_cgpa", profile.effectiveCgpa)
+            .putString("prof_credits_earned", profile.creditsEarned)
+            .putString("prof_credits_exempted", profile.creditsExempted)
+            .putString("prof_semester_no", profile.currentSemesterNo)
+            .putString("prof_semester_name", profile.semesterName)
+            .apply()
+    }
+
+    fun saveCurrentSubjects(subjects: List<com.example.data.model.EnrolledSubject>) {
+        val serialized = subjects.joinToString(";") { "${it.code}|${it.title}" }
+        prefs.edit().putString("cached_enrolled_subjects", serialized).apply()
+    }
+
+    fun getCurrentSubjects(): List<com.example.data.model.EnrolledSubject> {
+        val serialized = prefs.getString("cached_enrolled_subjects", "").orEmpty()
+        if (serialized.isEmpty()) return emptyList()
+        return serialized.split(";").mapNotNull {
+            val parts = it.split("|")
+            if (parts.size >= 2) com.example.data.model.EnrolledSubject(parts[0], parts[1]) else null
+        }
+    }
+
     fun saveLogin(studentId: String, pass: String) {
         prefs.edit()
             .putString(KEY_STUDENT_ID, studentId.trim().uppercase())
@@ -139,5 +199,7 @@ class PreferencesManager(context: Context) {
         private const val KEY_VIBRATION = "alarm_vibrate_enabled"
         private const val KEY_NOTIFICATION_RINGTONE = "notification_ringtone_type"
         private const val KEY_APP_THEME = "app_theme_mode" // "system", "light", "dark"
+        private const val KEY_AUTO_SYNC_ON_LAUNCH = "auto_sync_on_launch"
+        private const val KEY_HAS_PROMPTED_AUTO_SYNC = "has_prompted_auto_sync"
     }
 }

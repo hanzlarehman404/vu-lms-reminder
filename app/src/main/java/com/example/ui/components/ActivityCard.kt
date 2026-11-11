@@ -75,47 +75,6 @@ fun ActivityCard(
     }
     val startDateStr = SimpleDateFormat("dd MMM", Locale.getDefault()).format(Date(activity.startDate))
 
-    if (showConfirmDialog) {
-        AlertDialog(
-            onDismissRequest = { showConfirmDialog = false },
-            title = {
-                Text(
-                    text = if (activity.isCompleted) "Mark as Incomplete?" else "Confirm Completion",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 17.sp
-                )
-            },
-            text = {
-                Text(
-                    text = if (activity.isCompleted) {
-                        "Do you want to re-enable deadline reminders for \"${activity.title}\"?"
-                    } else {
-                        "Are you sure you have submitted/paid \"${activity.title}\" on official VU LMS? Reminders for this task will be stopped."
-                    },
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showConfirmDialog = false
-                        onToggleCompletion(!activity.isCompleted)
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = VuGreenPrimary),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text(if (activity.isCompleted) "Re-open" else "Confirm Done", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showConfirmDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-
     Card(
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(
@@ -202,36 +161,19 @@ fun ActivityCard(
                     }
                 }
 
-                if (!isUpcoming) {
-                    // Completion Toggle Checkbox with accessible touch target
-                    IconButton(
-                        onClick = { showConfirmDialog = true },
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(24.dp)
-                                .background(
-                                    color = if (activity.isCompleted) VuGreenPrimary else Color.Transparent,
-                                    shape = RoundedCornerShape(6.dp)
-                                )
-                                .border(
-                                    width = 1.5.dp,
-                                    color = if (activity.isCompleted) VuGreenPrimary else MaterialTheme.colorScheme.outline,
-                                    shape = RoundedCornerShape(6.dp)
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (activity.isCompleted) {
-                                Icon(
-                                    imageVector = Icons.Default.Check,
-                                    contentDescription = "Completed",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        }
-                    }
+                // Auto status indicator badge
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = badgeColor.copy(alpha = 0.12f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, badgeColor.copy(alpha = 0.35f))
+                ) {
+                    Text(
+                        text = relativeText,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = badgeColor,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
                 }
             }
 
@@ -262,17 +204,19 @@ fun ActivityCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = badgeColor.copy(alpha = 0.12f)
-                ) {
-                    Text(
-                        text = relativeText,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = badgeColor,
-                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
-                    )
+                if (activity.isCompleted) {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = VuGreenPrimary.copy(alpha = 0.12f)
+                    ) {
+                        Text(
+                            text = "✓ Submitted",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = VuGreenPrimary,
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                        )
+                    }
                 }
             }
         }

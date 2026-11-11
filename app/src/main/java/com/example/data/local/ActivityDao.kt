@@ -51,6 +51,12 @@ interface ActivityDao {
     suspend fun clearAll()
 
     @Transaction
+    suspend fun refreshAll(newActivities: List<ActivityEntity>) {
+        clearAll()
+        insertOrUpdateAll(newActivities)
+    }
+
+    @Transaction
     suspend fun upsertPreservingCompletion(
         newActivities: List<ActivityEntity>,
         autoCompletedIds: Set<String> = emptySet()
