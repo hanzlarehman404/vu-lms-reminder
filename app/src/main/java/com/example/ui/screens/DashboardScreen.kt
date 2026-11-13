@@ -4,6 +4,10 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -194,57 +198,71 @@ fun DashboardScreen(
             )
         }
     ) { paddingValues ->
-        LazyColumn(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues),
-            contentPadding = PaddingValues(14.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(paddingValues)
         ) {
-            // Sync status message banner
+            // Sync status message banner (auto-dismissed smoothly after sync completes)
+            var lastDisplayedMessage by remember { mutableStateOf("") }
             if (syncMessage != null) {
-                item {
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = VuSuccessMint.copy(alpha = 0.15f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, VuSuccessMint.copy(alpha = 0.4f)),
-                        modifier = Modifier.fillMaxWidth()
+                lastDisplayedMessage = syncMessage
+            }
+            AnimatedVisibility(
+                visible = syncMessage != null,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = VuSuccessMint.copy(alpha = 0.15f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, VuSuccessMint.copy(alpha = 0.4f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Sync,
-                                    contentDescription = null,
-                                    tint = VuSuccessMint,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = syncMessage,
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                            IconButton(
-                                onClick = onClearSyncMessage,
-                                modifier = Modifier.size(20.dp)
-                            ) {
-                                Icon(Icons.Default.Close, contentDescription = "Dismiss", modifier = Modifier.size(14.dp))
-                            }
+                            Icon(
+                                imageVector = Icons.Default.Sync,
+                                contentDescription = null,
+                                tint = VuSuccessMint,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = syncMessage ?: lastDisplayedMessage,
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                        IconButton(
+                            onClick = onClearSyncMessage,
+                            modifier = Modifier.size(20.dp)
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Dismiss", modifier = Modifier.size(14.dp))
                         }
                     }
                 }
             }
+
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentPadding = PaddingValues(14.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
 
             // Hero Countdown Timer for nearest deadline (from available tasks)
             if (!showUpcomingOnly) {
@@ -540,6 +558,7 @@ fun DashboardScreen(
                         onClick = { selectedActivityForDetail = act }
                     )
                 }
+            }
             }
         }
     }

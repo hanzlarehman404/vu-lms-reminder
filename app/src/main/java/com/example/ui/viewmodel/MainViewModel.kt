@@ -77,6 +77,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _syncMessage = MutableStateFlow<String?>(null)
     val syncMessage: StateFlow<String?> = _syncMessage.asStateFlow()
+    private var syncMessageJob: kotlinx.coroutines.Job? = null
+
+    private fun showSyncMessage(message: String, autoDismiss: Boolean = true, durationMs: Long = 4000L) {
+        syncMessageJob?.cancel()
+        _syncMessage.value = message
+        if (autoDismiss) {
+            syncMessageJob = viewModelScope.launch {
+                kotlinx.coroutines.delay(durationMs)
+                if (_syncMessage.value == message) {
+                    _syncMessage.value = null
+                }
+            }
+        }
+    }
 
     private val _updateInfo = MutableStateFlow<AppUpdateInfo?>(null)
     val updateInfo: StateFlow<AppUpdateInfo?> = _updateInfo.asStateFlow()
@@ -248,13 +262,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (_isSyncing.value) return
         viewModelScope.launch {
             _isSyncing.value = true
-            _syncMessage.value = "Fetching latest academic profile from VU LMS..."
+            showSyncMessage("Fetching latest academic profile from VU LMS...", autoDismiss = false)
             val result = repository.refreshStudentProfile()
             _isSyncing.value = false
             if (result.isSuccess) {
-                _syncMessage.value = "Academic profile updated"
+                showSyncMessage("Academic profile updated")
             } else {
-                _syncMessage.value = "Could not fetch profile. Please check LMS connection."
+                showSyncMessage("Could not fetch profile. Please check LMS connection.")
             }
         }
     }
@@ -319,7 +333,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (_isSyncing.value) return
         viewModelScope.launch {
             _isSyncing.value = true
-            if (!silent) _syncMessage.value = "Syncing activities, fees, subjects & profile..."
+            if (!silent) showSyncMessage("Syncing activities, fees, subjects & profile...", autoDismiss = false)
             val result = repository.syncActivities()
             if (result.isSuccess) {
                 if (studentProfile.value.cgpa.isEmpty()) {
@@ -337,11 +351,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _studentAvatarFile.value = repository.getProfileAvatarFile()
                 _studentECardFile.value = repository.getStudentECardFile()
                 val count = result.getOrNull() ?: 0
-                if (!silent) _syncMessage.value = "Synced $count activities, fees & academic profile"
+                if (!silent) showSyncMessage("Synced $count activities, fees & academic profile")
             } else {
                 if (!silent) {
                     val err = result.exceptionOrNull()?.localizedMessage ?: "Sync failed"
-                    _syncMessage.value = "Sync failed: $err"
+                    showSyncMessage("Sync failed: $err", durationMs = 5000L)
                 }
             }
             _isSyncing.value = false
@@ -349,6 +363,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun clearSyncMessage() {
+        syncMessageJob?.cancel()
         _syncMessage.value = null
     }
 
@@ -361,14 +376,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun markAllAvailableAsDone() {
         viewModelScope.launch {
             repository.markAllAvailableCompleted()
-            _syncMessage.value = "All available activities marked as completed"
+            showSyncMessage("All available activities marked as completed")
         }
     }
 
     fun resetAllCompletions() {
         viewModelScope.launch {
             repository.resetAllCompletions()
-            _syncMessage.value = "All completion statuses reset"
+            showSyncMessage("All completion statuses reset")
         }
     }
 

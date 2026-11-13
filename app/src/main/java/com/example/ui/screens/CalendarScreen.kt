@@ -198,34 +198,160 @@ fun CalendarScreen(
             contentPadding = PaddingValues(14.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // View Mode Selector: Calendar Grid vs Timeline Bars
+            // View Mode Selector: Segmented Calendar Grid vs Timeline Bars
+            item {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        val calSelected = viewMode == "Calendar"
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (calSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 42.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { viewMode = "Calendar" }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CalendarMonth,
+                                    contentDescription = null,
+                                    tint = if (calSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Month Calendar",
+                                    fontSize = 13.sp,
+                                    fontWeight = if (calSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (calSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        val timelineSelected = viewMode == "Timeline"
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (timelineSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 42.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { viewMode = "Timeline" }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ViewTimeline,
+                                    contentDescription = null,
+                                    tint = if (timelineSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Timeline Bars",
+                                    fontSize = 13.sp,
+                                    fontWeight = if (timelineSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (timelineSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Month Summary & Total Activities Pill Row (cleanly separated from view switcher)
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
-                            selected = viewMode == "Calendar",
-                            onClick = { viewMode = "Calendar" },
-                            label = { Text("📅 Month Calendar") },
-                            shape = RoundedCornerShape(20.dp)
-                        )
-                        FilterChip(
-                            selected = viewMode == "Timeline",
-                            onClick = { viewMode = "Timeline" },
-                            label = { Text("⏳ Timeline Bars") },
-                            shape = RoundedCornerShape(20.dp)
+                    if (viewMode == "Timeline") {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = {
+                                    val newCal = displayedCalendar.clone() as Calendar
+                                    newCal.add(Calendar.MONTH, -1)
+                                    displayedCalendar = newCal
+                                },
+                                modifier = Modifier.size(34.dp)
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Previous Month", modifier = Modifier.size(18.dp))
+                            }
+                            Text(
+                                text = monthTitleFormat.format(displayedCalendar.time),
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            IconButton(
+                                onClick = {
+                                    val newCal = displayedCalendar.clone() as Calendar
+                                    newCal.add(Calendar.MONTH, 1)
+                                    displayedCalendar = newCal
+                                },
+                                modifier = Modifier.size(34.dp)
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Next Month", modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    } else {
+                        Text(
+                            text = "${monthTitleFormat.format(displayedCalendar.time)} Overview",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
 
-                    Text(
-                        text = "${monthActivities.size} Activities",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.EventNote,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = "${monthActivities.size} ${if (monthActivities.size == 1) "Activity" else "Activities"}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
                 }
             }
 
