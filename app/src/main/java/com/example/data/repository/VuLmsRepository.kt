@@ -30,7 +30,7 @@ class VuLmsRepository(
 ) {
     val allActivities: Flow<List<ActivityEntity>> = dao.getAllActivities()
 
-    private val _challansFlow = MutableStateFlow<List<ChallanEntity>>(emptyList())
+    private val _challansFlow = MutableStateFlow<List<ChallanEntity>>(prefs.getChallans())
     val challans: StateFlow<List<ChallanEntity>> = _challansFlow.asStateFlow()
 
     private val _subjectsFlow = MutableStateFlow<List<EnrolledSubject>>(prefs.getCurrentSubjects())
@@ -140,7 +140,9 @@ class VuLmsRepository(
         try {
             val challanResult = networkService.fetchAccountBook()
             if (challanResult.isSuccess) {
-                _challansFlow.value = challanResult.getOrNull().orEmpty()
+                val list = challanResult.getOrNull().orEmpty()
+                _challansFlow.value = list
+                prefs.saveChallans(list)
             }
         } catch (e: Exception) {
             Log.w(TAG, "Account book fetch error", e)
@@ -171,7 +173,7 @@ class VuLmsRepository(
             Log.w(TAG, "Current subjects fetch error", e)
         }
 
-        // 4. Fetch Student Profile
+        // 4. Fetch Student Profile (always merge with cached so partial responses never wipe CGPA/credits)
         try {
             val profileResult = networkService.fetchStudentProfile()
             if (profileResult.isSuccess) {
@@ -180,20 +182,18 @@ class VuLmsRepository(
                     prof = prof.copy(studentId = prefs.getStudentId())
                 }
                 if (prof.studentId.isNotEmpty() || prof.studentName.isNotEmpty() || prof.cgpa.isNotEmpty()) {
-                    _studentProfileFlow.value = prof
-                    prefs.saveStudentProfile(prof)
+                    val merged = prefs.saveStudentProfile(prof)
+                    _studentProfileFlow.value = merged
                 }
             } else if (_studentProfileFlow.value.studentId.isEmpty() && prefs.getStudentId().isNotEmpty()) {
-                val fallback = _studentProfileFlow.value.copy(studentId = prefs.getStudentId())
-                _studentProfileFlow.value = fallback
-                prefs.saveStudentProfile(fallback)
+                val merged = prefs.saveStudentProfile(_studentProfileFlow.value.copy(studentId = prefs.getStudentId()))
+                _studentProfileFlow.value = merged
             }
         } catch (e: Exception) {
             Log.w(TAG, "Student profile fetch error", e)
             if (_studentProfileFlow.value.studentId.isEmpty() && prefs.getStudentId().isNotEmpty()) {
-                val fallback = _studentProfileFlow.value.copy(studentId = prefs.getStudentId())
-                _studentProfileFlow.value = fallback
-                prefs.saveStudentProfile(fallback)
+                val merged = prefs.saveStudentProfile(_studentProfileFlow.value.copy(studentId = prefs.getStudentId()))
+                _studentProfileFlow.value = merged
             }
         }
 
@@ -263,8 +263,8 @@ class VuLmsRepository(
                 prof = prof.copy(studentId = prefs.getStudentId())
             }
             if (prof.studentId.isNotEmpty() || prof.studentName.isNotEmpty() || prof.cgpa.isNotEmpty()) {
-                _studentProfileFlow.value = prof
-                prefs.saveStudentProfile(prof)
+                val merged = prefs.saveStudentProfile(prof)
+                _studentProfileFlow.value = merged
             }
         }
 
@@ -282,6 +282,54 @@ class VuLmsRepository(
         }
 
         profileResult
+    }
+
+    fun syncCookiesToWebView() {
+        networkService.syncCookiesToWebView()
+    }
+
+    suspend fun prepareChallanForPayment(challan: ChallanEntity): ChallanEntity = withContext(Dispatchers.IO) {
+        try {
+            if (!networkService.hasSessionCookie() && prefs.isLoggedIn()) {
+                val studentId = prefs.getStudentId()
+                val pass = prefs.getPassword()
+                if (studentId.isNotEmpty() && pass.isNotEmpty()) {
+                    val tokens = networkService.fetchLoginPage().getOrNull()
+                    if (tokens != null) {
+                        networkService.submitLogin(studentId, pass, tokens)
+                    }
+                }
+            }
+
+            if (challan.viewState.isEmpty() || !networkService.hasSessionCookie()) {
+                var res = networkService.fetchAccountBook()
+                if (res.isFailure && prefs.isLoggedIn()) {
+                    val studentId = prefs.getStudentId()
+                    val pass = prefs.getPassword()
+                    val tokens = networkService.fetchLoginPage().getOrNull()
+                    if (tokens != null && studentId.isNotEmpty() && pass.isNotEmpty()) {
+                        networkService.submitLogin(studentId, pass, tokens)
+                        res = networkService.fetchAccountBook()
+                    }
+                }
+                if (res.isSuccess) {
+                    val freshList = res.getOrNull().orEmpty()
+                    if (freshList.isNotEmpty()) {
+                        _challansFlow.value = freshList
+                        prefs.saveChallans(freshList)
+                        val match = freshList.firstOrNull { it.challanNo == challan.challanNo }
+                        if (match != null) {
+                            networkService.syncCookiesToWebView()
+                            return@withContext match
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "prepareChallanForPayment note: ${e.message}")
+        }
+        networkService.syncCookiesToWebView()
+        challan
     }
 
     suspend fun downloadStudentECard(): Result<File> = withContext(Dispatchers.IO) {
@@ -335,7 +383,11 @@ class VuLmsRepository(
         networkService.clearCookies()
         prefs.clearLogin()
         dao.clearAll()
+        _challansFlow.value = emptyList()
+        _subjectsFlow.value = emptyList()
+        _studentProfileFlow.value = StudentProfile()
         try { java.io.File(context.filesDir, "student_avatar.jpg").delete() } catch (ignored: Exception) {}
+        try { java.io.File(context.filesDir, "student_ecard.pdf").delete() } catch (ignored: Exception) {}
     }
 
     fun getPreferences(): PreferencesManager = prefs

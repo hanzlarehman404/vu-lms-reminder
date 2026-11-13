@@ -38,7 +38,7 @@ data class CalendarFetchResult(
 )
 
 class VuLmsNetworkService(
-    private val cookieJar: VuLmsCookieJar = VuLmsCookieJar()
+    private val cookieJar: VuLmsCookieJar = VuLmsCookieJar.shared
 ) {
     private val client: OkHttpClient = OkHttpClient.Builder().apply {
         cookieJar(cookieJar)
@@ -64,6 +64,10 @@ class VuLmsNetworkService(
 
     fun hasSessionCookie(): Boolean {
         return cookieJar.hasSessionCookie()
+    }
+
+    fun syncCookiesToWebView() {
+        cookieJar.syncToAndroidWebView()
     }
 
     suspend fun fetchLoginPage(): Result<LoginPageTokens> = withContext(Dispatchers.IO) {
@@ -326,6 +330,7 @@ class VuLmsNetworkService(
             COURSE_SELECTION_CLOSED_URL,
             "https://vulms.vu.edu.pk/StudentServices/CourseSelection/CourseSelection.aspx",
             "https://vulms.vu.edu.pk/StudentServices/StudentServices.aspx",
+            COURSE_SELECTION_CLOSED_URL,
             "https://vulms.vu.edu.pk/Profile/StudentProfile.aspx",
             "https://vulms.vu.edu.pk/home.aspx"
         )
@@ -1022,6 +1027,7 @@ class VuLmsNetworkService(
          */
         val sharedImageOkHttpClient: OkHttpClient by lazy {
             val builder = OkHttpClient.Builder()
+                .cookieJar(VuLmsCookieJar.shared)
                 .connectTimeout(20, TimeUnit.SECONDS)
                 .readTimeout(25, TimeUnit.SECONDS)
                 .followRedirects(true)

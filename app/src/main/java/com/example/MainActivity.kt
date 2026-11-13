@@ -276,6 +276,9 @@ class MainActivity : ComponentActivity() {
                                 2 -> AccountBookScreen(
                                     challans = challans,
                                     isSyncing = isSyncing,
+                                    syncMessage = syncMessage,
+                                    onClearSyncMessage = { viewModel.clearSyncMessage() },
+                                    onPreparePaymentSession = { challan -> viewModel.prepareChallanForPayment(challan) },
                                     onSyncNow = { viewModel.syncNow() }
                                 )
 

@@ -1,14 +1,32 @@
 package com.example.ui.screens
 
+import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.net.http.SslError
+import android.text.TextUtils
+import android.webkit.CookieManager
+import android.webkit.SslErrorHandler
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.Toast
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -23,6 +41,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -33,43 +55,158 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.example.R
 import com.example.data.model.ChallanEntity
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import androidx.compose.ui.viewinterop.AndroidView
+import com.example.data.remote.VuLmsCookieJar
 import com.example.ui.theme.VuDangerRed
 import com.example.ui.theme.VuGreenPrimary
 import com.example.ui.theme.VuInfoCyan
 import com.example.ui.theme.VuNavy
+import com.example.ui.theme.VuSidebarDark
+import com.example.ui.theme.VuSuccessMint
 import com.example.ui.theme.VuWarningAmber
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AccountBookScreen(
     challans: List<ChallanEntity>,
     isSyncing: Boolean,
+    syncMessage: String? = null,
+    onClearSyncMessage: () -> Unit = {},
+    onPreparePaymentSession: suspend (ChallanEntity) -> ChallanEntity = { it },
     onSyncNow: () -> Unit
 ) {
     val context = LocalContext.current
-    // Pending selected by default as requested
+    val scope = rememberCoroutineScope()
+    // Pending selected by default
     var selectedFilter by remember { mutableStateOf("Pending") } // "Pending", "All", "Paid"
+    var searchQuery by remember { mutableStateOf("") }
     var selected1BillChallan by remember { mutableStateOf<ChallanEntity?>(null) }
     var selectedCardPaymentChallan by remember { mutableStateOf<ChallanEntity?>(null) }
     var selectedPrintVoucherChallan by remember { mutableStateOf<ChallanEntity?>(null) }
+    var isPreparingPayment by remember { mutableStateOf(false) }
+    var showResyncWarningDialog by remember { mutableStateOf(false) }
 
-    val pendingCount = challans.count { !it.isPaid }
-    val paidCount = challans.count { it.isPaid }
+    val infiniteTransition = rememberInfiniteTransition(label = "fee_sync_spin")
+    val rotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "rotate"
+    )
 
-    val filteredChallans = remember(challans, selectedFilter) {
-        when (selectedFilter) {
-            "Pending" -> challans.filter { !it.isPaid }
-            "Paid" -> challans.filter { it.isPaid }
-            else -> challans
+    val now = System.currentTimeMillis()
+    val sortedChallans = remember(challans) {
+        ChallanEntity.sortChallansByUpcomingDeadline(challans, System.currentTimeMillis())
+    }
+
+    val pendingChallans = remember(sortedChallans) { sortedChallans.filter { !it.isPaid } }
+    val paidChallans = remember(sortedChallans) { sortedChallans.filter { it.isPaid } }
+    val pendingCount = pendingChallans.size
+    val paidCount = paidChallans.size
+    val dueSoonCount = remember(pendingChallans) {
+        val currentNow = System.currentTimeMillis()
+        val weekMs = 7L * 24 * 3600 * 1000
+        pendingChallans.count { ch ->
+            val due = ch.dueDateMillis()
+            due != null && due >= currentNow && (due - currentNow) <= weekMs
         }
+    }
+    val overdueCount = remember(pendingChallans) {
+        val currentNow = System.currentTimeMillis()
+        pendingChallans.count { it.isOverdue(currentNow) }
+    }
+
+    val nearestUpcomingChallan = remember(pendingChallans) {
+        val currentNow = System.currentTimeMillis()
+        pendingChallans.firstOrNull { ch ->
+            val due = ch.dueDateMillis()
+            due != null && due >= currentNow
+        } ?: pendingChallans.firstOrNull()
+    }
+
+    val filteredChallans = remember(sortedChallans, selectedFilter, searchQuery) {
+        val base = when (selectedFilter) {
+            "Pending" -> sortedChallans.filter { !it.isPaid }
+            "Paid" -> sortedChallans.filter { it.isPaid }
+            "Due Soon" -> {
+                val currentNow = System.currentTimeMillis()
+                val weekMs = 7L * 24 * 3600 * 1000
+                sortedChallans.filter { ch ->
+                    !ch.isPaid && (ch.dueDateMillis()?.let { it >= currentNow && (it - currentNow) <= weekMs } ?: false)
+                }
+            }
+            "Overdue" -> sortedChallans.filter { it.isOverdue(System.currentTimeMillis()) }
+            else -> sortedChallans
+        }
+        if (searchQuery.isBlank()) base
+        else base.filter {
+            it.challanNo.contains(searchQuery, ignoreCase = true) ||
+                it.challanType.contains(searchQuery, ignoreCase = true) ||
+                it.payableAmount.contains(searchQuery, ignoreCase = true)
+        }
+    }
+
+    if (showResyncWarningDialog) {
+        AlertDialog(
+            onDismissRequest = { showResyncWarningDialog = false },
+            icon = {
+                Icon(Icons.Default.Warning, contentDescription = null, tint = VuWarningAmber)
+            },
+            title = {
+                Text("Confirm LMS Resync", fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Text(
+                    "Warning: Synchronizing with VU LMS may log you out of your current web browser session because VU LMS permits only one active login at a time.\n\nDo you want to proceed and refresh all activities, fees, subjects, and academic records?",
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showResyncWarningDialog = false
+                        onSyncNow()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = VuGreenPrimary),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Proceed & Sync", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResyncWarningDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (isPreparingPayment) {
+        AlertDialog(
+            onDismissRequest = {},
+            confirmButton = {},
+            title = { Text("Preparing Secure Session...", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+            text = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.5.dp)
+                    Text("Refreshing VU LMS payment session and security tokens...", fontSize = 13.sp)
+                }
+            }
+        )
     }
 
     if (selected1BillChallan != null) {
@@ -127,19 +264,16 @@ fun AccountBookScreen(
                 },
                 actions = {
                     IconButton(
-                        onClick = onSyncNow,
+                        onClick = { showResyncWarningDialog = true },
                         enabled = !isSyncing,
                         modifier = Modifier.testTag("account_book_sync_button")
                     ) {
-                        if (isSyncing) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        } else {
-                            Icon(Icons.Default.Refresh, contentDescription = "Sync Fees")
-                        }
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Sync All LMS Data",
+                            tint = VuInfoCyan,
+                            modifier = if (isSyncing) Modifier.rotate(rotation) else Modifier
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -149,106 +283,154 @@ fun AccountBookScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .padding(padding),
+            contentPadding = PaddingValues(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            item {
-                Spacer(modifier = Modifier.height(4.dp))
-
-                // Summary Metric Cards
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Card(
-                        shape = RoundedCornerShape(14.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        elevation = CardDefaults.cardElevation(2.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable { selectedFilter = "Pending" }
+            // Sync status message banner (matching Activities Tab)
+            if (syncMessage != null) {
+                item {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = VuSuccessMint.copy(alpha = 0.15f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, VuSuccessMint.copy(alpha = 0.4f)),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
                                 Icon(
-                                    Icons.Default.HourglassTop,
+                                    imageVector = Icons.Default.Sync,
                                     contentDescription = null,
-                                    tint = if (pendingCount > 0) VuDangerRed else VuGreenPrimary,
-                                    modifier = Modifier.size(18.dp)
+                                    tint = VuSuccessMint,
+                                    modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Pending Fees", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "$pendingCount Challan${if (pendingCount != 1) "s" else ""}",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (pendingCount > 0) VuDangerRed else MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-
-                    Card(
-                        shape = RoundedCornerShape(14.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        elevation = CardDefaults.cardElevation(2.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable { selectedFilter = "Paid" }
-                    ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    Icons.Default.CheckCircle,
-                                    contentDescription = null,
-                                    tint = VuGreenPrimary,
-                                    modifier = Modifier.size(18.dp)
+                                Text(
+                                    text = syncMessage,
+                                    fontSize = 12.sp,
+                                    color = VuSuccessMint,
+                                    fontWeight = FontWeight.Medium
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Paid Fees", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "$paidCount Cleared",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = VuGreenPrimary
-                            )
+                            IconButton(onClick = onClearSyncMessage, modifier = Modifier.size(20.dp)) {
+                                Icon(Icons.Default.Close, contentDescription = "Dismiss", modifier = Modifier.size(14.dp), tint = VuSuccessMint)
+                            }
                         }
                     }
                 }
             }
 
-            // Filter Tabs: Pending (default), All, Paid
+            // Hero Countdown Timer Card (matching Activities Tab CountdownTimerCard)
+            item {
+                ChallanCountdownTimerCard(
+                    challan = nearestUpcomingChallan,
+                    onPay1Bill = { ch -> selected1BillChallan = ch }
+                )
+            }
+
+            // Quick Stats Bar (matching Activities Tab StatPills)
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FeeStatPill(
+                        label = "Pending",
+                        count = pendingCount,
+                        isSelected = selectedFilter == "Pending",
+                        color = VuDangerRed,
+                        onClick = { selectedFilter = "Pending" }
+                    )
+                    FeeStatPill(
+                        label = "Due Soon",
+                        count = dueSoonCount,
+                        isSelected = selectedFilter == "Due Soon",
+                        color = VuWarningAmber,
+                        onClick = { selectedFilter = "Due Soon" }
+                    )
+                    FeeStatPill(
+                        label = "Overdue",
+                        count = overdueCount,
+                        isSelected = selectedFilter == "Overdue",
+                        color = VuDangerRed,
+                        onClick = { selectedFilter = "Overdue" }
+                    )
+                    FeeStatPill(
+                        label = "All",
+                        count = challans.size,
+                        isSelected = selectedFilter == "All",
+                        color = MaterialTheme.colorScheme.primary,
+                        onClick = { selectedFilter = "All" }
+                    )
+                    FeeStatPill(
+                        label = "Paid",
+                        count = paidCount,
+                        isSelected = selectedFilter == "Paid",
+                        color = VuGreenPrimary,
+                        onClick = { selectedFilter = "Paid" }
+                    )
+                }
+            }
+
+            // Search Input (matching Activities Tab)
+            item {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Search by challan # or fee type...", fontSize = 13.sp) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Close, contentDescription = "Clear", modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("challan_search_input")
+                )
+            }
+
+            // Section Header (matching Activities Tab)
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    FilterChip(
-                        selected = selectedFilter == "Pending",
-                        onClick = { selectedFilter = "Pending" },
-                        label = { Text("🚨 Pending ($pendingCount)") },
-                        shape = RoundedCornerShape(20.dp),
-                        modifier = Modifier.testTag("fee_filter_pending")
+                    Text(
+                        text = when (selectedFilter) {
+                            "Pending" -> "Pending Challans (${filteredChallans.size})"
+                            "Paid" -> "Paid Challans (${filteredChallans.size})"
+                            "Due Soon" -> "Due This Week (${filteredChallans.size})"
+                            "Overdue" -> "Overdue Challans (${filteredChallans.size})"
+                            else -> "All Challans (${filteredChallans.size})"
+                        },
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
 
-                    FilterChip(
-                        selected = selectedFilter == "All",
-                        onClick = { selectedFilter = "All" },
-                        label = { Text("📋 All (${challans.size})") },
-                        shape = RoundedCornerShape(20.dp),
-                        modifier = Modifier.testTag("fee_filter_all")
-                    )
-
-                    FilterChip(
-                        selected = selectedFilter == "Paid",
-                        onClick = { selectedFilter = "Paid" },
-                        label = { Text("✅ Paid ($paidCount)") },
-                        shape = RoundedCornerShape(20.dp),
-                        modifier = Modifier.testTag("fee_filter_paid")
+                    Text(
+                        text = "Sorted by deadline",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Medium
                     )
                 }
             }
@@ -257,35 +439,35 @@ fun AccountBookScreen(
             if (filteredChallans.isEmpty()) {
                 item {
                     Card(
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(14.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 24.dp)
+                            .padding(vertical = 18.dp)
                     ) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(32.dp),
+                                .padding(24.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Icon(
                                 imageVector = if (selectedFilter == "Pending") Icons.Default.CheckCircle else Icons.Default.ReceiptLong,
                                 contentDescription = null,
-                                tint = if (selectedFilter == "Pending") VuGreenPrimary else MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(48.dp)
+                                tint = if (selectedFilter == "Pending") VuGreenPrimary else VuInfoCyan,
+                                modifier = Modifier.size(40.dp)
                             )
-                            Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
                             Text(
                                 text = if (selectedFilter == "Pending") "No Pending Fee Challans" else "No Challans Found",
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp
+                                fontSize = 15.sp
                             )
-                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = if (selectedFilter == "Pending")
-                                    "All semester dues are clear. Resync anytime to refresh."
-                                else "No records match the current filter.",
+                                    "All semester dues are clear. Tap Sync to check latest updates from VU LMS."
+                                else "Try changing the filter or search query.",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 textAlign = TextAlign.Center
@@ -297,9 +479,24 @@ fun AccountBookScreen(
                 items(filteredChallans, key = { it.challanNo }) { challan ->
                     ChallanCardItem(
                         challan = challan,
+                        now = now,
                         onOpen1Bill = { selected1BillChallan = challan },
-                        onOpenCardPayment = { selectedCardPaymentChallan = challan },
-                        onOpenPrintVoucher = { selectedPrintVoucherChallan = challan }
+                        onOpenCardPayment = {
+                            scope.launch {
+                                isPreparingPayment = true
+                                val prepared = onPreparePaymentSession(challan)
+                                isPreparingPayment = false
+                                selectedCardPaymentChallan = prepared
+                            }
+                        },
+                        onOpenPrintVoucher = {
+                            scope.launch {
+                                isPreparingPayment = true
+                                val prepared = onPreparePaymentSession(challan)
+                                isPreparingPayment = false
+                                selectedPrintVoucherChallan = prepared
+                            }
+                        }
                     )
                 }
             }
@@ -312,48 +509,346 @@ fun AccountBookScreen(
 }
 
 @Composable
+private fun ChallanCountdownTimerCard(
+    challan: ChallanEntity?,
+    onPay1Bill: (ChallanEntity) -> Unit
+) {
+    if (challan == null) {
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("empty_fee_countdown_card")
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(18.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = VuGreenPrimary,
+                    modifier = Modifier.size(32.dp)
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "🎉 All Fees Cleared!",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "No pending fee challans are due right now.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        return
+    }
+
+    var currentTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            currentTime = System.currentTimeMillis()
+            delay(1000)
+        }
+    }
+
+    val dueMillis = challan.dueDateMillis() ?: (currentTime + 24 * 3600 * 1000L)
+    val isOverdue = dueMillis < currentTime
+    val remainingMillis = (dueMillis - currentTime).coerceAtLeast(0L)
+    val days = remainingMillis / (24 * 3600 * 1000)
+    val hours = (remainingMillis % (24 * 3600 * 1000)) / (3600 * 1000)
+    val minutes = (remainingMillis % (3600 * 1000)) / (60 * 1000)
+    val seconds = (remainingMillis % (60 * 1000)) / 1000
+
+    val isCritical = isOverdue || (days == 0L && hours < 12)
+    val isUrgent = !isCritical && days <= 2L
+
+    val gradientColors = when {
+        isCritical -> listOf(Color(0xFF8B0000), Color(0xFF4A0000))
+        isUrgent -> listOf(Color(0xFFB45309), Color(0xFF78350F))
+        else -> listOf(VuSidebarDark, Color(0xFF151521))
+    }
+
+    Card(
+        shape = RoundedCornerShape(18.dp),
+        elevation = CardDefaults.cardElevation(3.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("fee_countdown_hero_card")
+    ) {
+        Box(
+            modifier = Modifier
+                .background(Brush.horizontalGradient(gradientColors))
+                .padding(18.dp)
+        ) {
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color.White.copy(alpha = 0.18f)
+                    ) {
+                        Text(
+                            text = when {
+                                isOverdue -> "🚨 OVERDUE CHALLAN"
+                                isCritical -> "🚨 CRITICAL FEE DEADLINE"
+                                isUrgent -> "⚡ DUE SOON"
+                                else -> "⏳ NEAREST FEE DEADLINE"
+                            },
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = VuGreenPrimary
+                    ) {
+                        Text(
+                            text = if (challan.payableAmount.isNotEmpty()) "PKR ${challan.payableAmount}" else "#${challan.challanNo}",
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Text(
+                    text = challan.challanType.ifEmpty { "VU Fee Challan #${challan.challanNo}" },
+                    color = Color.White,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Text(
+                    text = "Challan #${challan.challanNo} • Due: ${challan.dueDate.ifEmpty { "Check LMS" }}",
+                    color = Color.White.copy(alpha = 0.78f),
+                    fontSize = 12.sp
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    FeeTimeBox(value = "%02d".format(days), label = "DAYS")
+                    FeeTimeBox(value = "%02d".format(hours), label = "HOURS")
+                    FeeTimeBox(value = "%02d".format(minutes), label = "MINS")
+                    FeeTimeBox(value = "%02d".format(seconds), label = "SECS")
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                FilledTonalButton(
+                    onClick = { onPay1Bill(challan) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(42.dp)
+                        .testTag("fee_countdown_pay_button"),
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = VuInfoCyan,
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Payment,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Pay via 1Bill Now",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FeeTimeBox(value: String, label: String) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.Black.copy(alpha = 0.35f))
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Text(
+            text = value,
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            fontSize = 18.sp,
+            letterSpacing = 1.sp
+        )
+        Text(
+            text = label,
+            color = Color.White.copy(alpha = 0.7f),
+            fontSize = 8.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+@Composable
+private fun FeeStatPill(
+    label: String,
+    count: Int,
+    isSelected: Boolean,
+    color: Color,
+    onClick: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = if (isSelected) color else color.copy(alpha = 0.1f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, color.copy(alpha = 0.35f)),
+        modifier = Modifier.clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "$count",
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp,
+                color = if (isSelected) Color.White else color
+            )
+            Spacer(modifier = Modifier.width(5.dp))
+            Text(
+                text = label,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface
+            )
+        }
+    }
+}
+
+@Composable
 fun ChallanCardItem(
     challan: ChallanEntity,
+    now: Long = System.currentTimeMillis(),
     onOpen1Bill: () -> Unit,
     onOpenCardPayment: () -> Unit,
     onOpenPrintVoucher: () -> Unit
 ) {
-    val context = LocalContext.current
+    val dueMillis = challan.dueDateMillis()
+    val isPast = dueMillis != null && dueMillis < now && !challan.isPaid
+    val remainingMillis = ((dueMillis ?: now) - now).coerceAtLeast(0L)
+    val remainingHours = remainingMillis / (3600 * 1000)
+    val remainingDays = remainingMillis / (24 * 3600 * 1000)
+
+    val relativeText = when {
+        challan.isPaid -> "✅ Paid"
+        dueMillis == null -> "⏳ Check Due Date"
+        isPast -> "⚠️ Overdue"
+        remainingHours <= 1 -> "🚨 < 1 hr left!"
+        remainingHours < 24 -> "⚡ $remainingHours hrs left"
+        remainingDays == 1L -> "📅 Due tomorrow"
+        else -> "⏳ $remainingDays days left"
+    }
+
+    val badgeColor = when {
+        challan.isPaid -> VuGreenPrimary
+        dueMillis == null -> MaterialTheme.colorScheme.primary
+        isPast -> VuDangerRed
+        remainingHours < 24 -> VuDangerRed
+        remainingHours < 72 -> VuWarningAmber
+        else -> MaterialTheme.colorScheme.primary
+    }
 
     Card(
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        modifier = Modifier.fillMaxWidth()
+        colors = CardDefaults.cardColors(
+            containerColor = if (challan.isPaid) {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            } else {
+                MaterialTheme.colorScheme.surface
+            }
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (challan.isPaid) 1.dp else 2.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (challan.isPaid) MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+            else badgeColor.copy(alpha = 0.35f)
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .alpha(if (challan.isPaid) 0.8f else 1f)
+            .testTag("challan_card_${challan.challanNo}")
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(14.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = VuNavy.copy(alpha = 0.1f)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text(
-                        text = "Challan #${challan.challanNo}",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
-                        color = VuNavy,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
+                    ) {
+                        Text(
+                            text = "💳 #${challan.challanNo}",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                        )
+                    }
+
+                    if (challan.payableAmount.isNotEmpty()) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            Text(
+                                text = "PKR ${challan.payableAmount}",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
                 }
 
                 Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = if (challan.isPaid) VuGreenPrimary.copy(alpha = 0.12f) else VuDangerRed.copy(alpha = 0.12f)
+                    shape = RoundedCornerShape(8.dp),
+                    color = badgeColor.copy(alpha = 0.12f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, badgeColor.copy(alpha = 0.35f))
                 ) {
                     Text(
-                        text = if (challan.isPaid) "✅ Paid" else "🚨 Unpaid",
+                        text = relativeText,
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp,
-                        color = if (challan.isPaid) VuGreenPrimary else VuDangerRed,
+                        color = badgeColor,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
@@ -365,49 +860,36 @@ fun ChallanCardItem(
                 text = challan.challanType.ifEmpty { "VU Fee Challan" },
                 fontWeight = FontWeight.Bold,
                 fontSize = 15.sp,
-                color = MaterialTheme.colorScheme.onSurface
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
             )
 
-            Spacer(modifier = Modifier.height(10.dp))
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Text("Payable Amount", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(
-                        text = if (challan.payableAmount.isNotEmpty()) "PKR ${challan.payableAmount}" else "As per Challan",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-
-                Column(horizontalAlignment = Alignment.End) {
-                    Text("Due Date", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(
-                        text = challan.dueDate.ifEmpty { "Check LMS" },
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
-                        color = if (challan.isPaid) MaterialTheme.colorScheme.onSurface else VuDangerRed
-                    )
-                }
-            }
-
-            if (challan.paidDate.isNotEmpty() && challan.paidDate != "-") {
-                Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = "Paid on: ${challan.paidDate}",
+                    text = "Due: ${challan.dueDate.ifEmpty { "Check LMS" }}",
                     fontSize = 11.sp,
-                    color = VuGreenPrimary,
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (challan.isPaid) MaterialTheme.colorScheme.onSurfaceVariant else badgeColor
                 )
+
+                if (challan.paidDate.isNotEmpty() && challan.paidDate != "-") {
+                    Text(
+                        text = "Paid: ${challan.paidDate}",
+                        fontSize = 11.sp,
+                        color = VuGreenPrimary,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Action Buttons: 1Bill, Print Challan, Pay with Card
             if (!challan.isPaid) {
@@ -415,7 +897,6 @@ fun ChallanCardItem(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Pay via 1Bill button
                     Button(
                         onClick = onOpen1Bill,
                         modifier = Modifier
@@ -431,7 +912,6 @@ fun ChallanCardItem(
                         Text("Pay via 1Bill", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
 
-                    // Print Challan button
                     OutlinedButton(
                         onClick = onOpenPrintVoucher,
                         modifier = Modifier
@@ -449,7 +929,6 @@ fun ChallanCardItem(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Pay with Card button (Bank / Card IPG)
                 FilledTonalButton(
                     onClick = onOpenCardPayment,
                     modifier = Modifier
@@ -463,7 +942,6 @@ fun ChallanCardItem(
                     Text("Pay with Card (Visa / MasterCard IPG)", fontSize = 12.sp, fontWeight = FontWeight.Medium)
                 }
             } else {
-                // Paid Challan: Print Paid Challan / Receipt
                 OutlinedButton(
                     onClick = onOpenPrintVoucher,
                     modifier = Modifier
@@ -808,6 +1286,7 @@ fun OneBillPaymentDialog(
     }
 }
 
+@SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun CardPaymentDialog(
     challan: ChallanEntity,
@@ -815,10 +1294,52 @@ fun CardPaymentDialog(
 ) {
     val context = LocalContext.current
     var isLoading by remember { mutableStateOf(true) }
+    var currentWebUrl by remember { mutableStateOf("about:blank") }
+    var webError by remember { mutableStateOf<String?>(null) }
+    var settleSecondsLeft by remember { mutableIntStateOf(4) }
+    var webViewRef by remember { mutableStateOf<WebView?>(null) }
+
+    // Ensure session cookies from VuLmsCookieJar are flushed to Android CookieManager before opening
+    LaunchedEffect(challan.challanNo) {
+        VuLmsCookieJar.shared.syncToAndroidWebView()
+    }
+
+    val isOnVuOrBlank = currentWebUrl.isBlank() ||
+        currentWebUrl.startsWith("about:", ignoreCase = true) ||
+        currentWebUrl.startsWith("data:", ignoreCase = true) ||
+        currentWebUrl.contains("vulms.vu.edu.pk", ignoreCase = true)
+
+    val isExternalGateway = currentWebUrl.startsWith("http", ignoreCase = true) && !isOnVuOrBlank
+
+    // Settle countdown timer once external Bank Alfalah / payment gateway URL starts loading
+    LaunchedEffect(currentWebUrl, isLoading, isExternalGateway) {
+        if (!isExternalGateway) {
+            settleSecondsLeft = 4
+        } else if (isLoading) {
+            settleSecondsLeft = 4
+        } else {
+            var remaining = 4
+            settleSecondsLeft = remaining
+            while (remaining > 0) {
+                delay(1000)
+                remaining--
+                settleSecondsLeft = remaining
+            }
+        }
+    }
+
+    val isBrowserButtonActive = isExternalGateway && !isLoading && settleSecondsLeft == 0 && webError == null
 
     val formHtml = remember(challan) {
-        val targetUrl = if (challan.payCardUrl.isNotEmpty()) challan.payCardUrl else "https://vulms.vu.edu.pk/IPG/Payment.aspx"
-        val controlName = if (challan.payControlName.isNotEmpty()) challan.payControlName else "ctl00\$MainContent\$grdaccountbook\$ctl24\$hlPay"
+        val targetUrl = TextUtils.htmlEncode(
+            if (challan.payCardUrl.isNotEmpty()) challan.payCardUrl else "https://vulms.vu.edu.pk/IPG/Payment.aspx"
+        )
+        val controlName = TextUtils.htmlEncode(
+            if (challan.payControlName.isNotEmpty()) challan.payControlName else "ctl00\$MainContent\$grdaccountbook\$ctl24\$hlPay"
+        )
+        val safeViewState = TextUtils.htmlEncode(challan.viewState)
+        val safeGenerator = TextUtils.htmlEncode(challan.viewStateGenerator)
+        val safePrevPage = TextUtils.htmlEncode(challan.previousPage)
         """
         <!DOCTYPE html>
         <html>
@@ -836,13 +1357,13 @@ fun CardPaymentDialog(
         <body onload="document.getElementById('payForm').submit();">
             <div class="spinner"></div>
             <h3>Connecting to VU Payment Gateway...</h3>
-            <p>Please wait, launching Bank of Punjab / 1Link / Visa & MasterCard IPG for Challan #${challan.challanNo}</p>
+            <p>Please wait, redirecting to Bank Alfalah / 1Link / Visa &amp; MasterCard IPG for Challan #${TextUtils.htmlEncode(challan.challanNo)}</p>
             <form id="payForm" method="POST" action="$targetUrl">
                 <input type="hidden" name="__EVENTTARGET" value="" />
                 <input type="hidden" name="__EVENTARGUMENT" value="" />
-                <input type="hidden" name="__VIEWSTATE" value="${challan.viewState}" />
-                <input type="hidden" name="__VIEWSTATEGENERATOR" value="${challan.viewStateGenerator}" />
-                <input type="hidden" name="__PREVIOUSPAGE" value="${challan.previousPage}" />
+                <input type="hidden" name="__VIEWSTATE" value="$safeViewState" />
+                <input type="hidden" name="__VIEWSTATEGENERATOR" value="$safeGenerator" />
+                <input type="hidden" name="__PREVIOUSPAGE" value="$safePrevPage" />
                 <input type="hidden" name="$controlName.x" value="17" />
                 <input type="hidden" name="$controlName.y" value="21" />
                 <input type="hidden" name="ctl00${'$'}MainContent${'$'}hfChallanID" value="" />
@@ -870,38 +1391,91 @@ fun CardPaymentDialog(
                     color = VuNavy,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.CreditCard, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("VU Card Payment (IPG)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.CreditCard, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("VU Card Payment (IPG)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                }
+                                Text(
+                                    text = "Challan #${challan.challanNo} • PKR ${challan.payableAmount}",
+                                    color = Color.White.copy(alpha = 0.8f),
+                                    fontSize = 12.sp
+                                )
                             }
-                            Text(
-                                text = "Challan #${challan.challanNo} • PKR ${challan.payableAmount}",
-                                color = Color.White.copy(alpha = 0.8f),
-                                fontSize = 12.sp
-                            )
+
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                FilledTonalButton(
+                                    onClick = {
+                                        if (isBrowserButtonActive) {
+                                            try {
+                                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(currentWebUrl)))
+                                            } catch (e: Exception) {
+                                                Toast.makeText(context, "Unable to open browser: ${e.message}", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    },
+                                    enabled = isBrowserButtonActive,
+                                    colors = ButtonDefaults.filledTonalButtonColors(
+                                        containerColor = if (isBrowserButtonActive) VuGreenPrimary else Color.White.copy(alpha = 0.14f),
+                                        contentColor = Color.White,
+                                        disabledContainerColor = Color.White.copy(alpha = 0.12f),
+                                        disabledContentColor = Color.White.copy(alpha = 0.55f)
+                                    ),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                    modifier = Modifier
+                                        .height(34.dp)
+                                        .testTag("card_payment_open_browser_button")
+                                ) {
+                                    Icon(
+                                        imageVector = if (isBrowserButtonActive) Icons.Default.OpenInBrowser else Icons.Default.LockClock,
+                                        contentDescription = "Open Final Bank URL in Browser",
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = when {
+                                            isBrowserButtonActive -> "Open Bank URL"
+                                            isExternalGateway && !isLoading -> "Wait ${settleSecondsLeft}s"
+                                            else -> "Locked"
+                                        },
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+
+                                IconButton(onClick = onDismiss) {
+                                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                                }
+                            }
                         }
 
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(
-                                onClick = {
-                                    val target = if (challan.payCardUrl.isNotEmpty()) challan.payCardUrl else "https://vulms.vu.edu.pk/AccountBook/AccountBook.aspx"
-                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(target)))
-                                }
-                            ) {
-                                Icon(Icons.Default.OpenInBrowser, contentDescription = "Open in External Browser", tint = Color.White)
-                            }
-                            IconButton(onClick = onDismiss) {
-                                Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
-                            }
+                        // Status banner explaining lock & redirect stage
+                        Surface(
+                            color = if (isBrowserButtonActive) VuGreenPrimary.copy(alpha = 0.25f) else Color.Black.copy(alpha = 0.25f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = when {
+                                    webError != null -> "⚠️ Gateway error: $webError"
+                                    isBrowserButtonActive -> "✅ Bank Alfalah gateway ready — tap 'Open Bank URL' to pay in browser without session loss."
+                                    isExternalGateway && isLoading -> "⏳ Loading final Bank Alfalah gateway page..."
+                                    isExternalGateway -> "🔒 Securing final Bank Alfalah URL... Open in Browser unlocks in ${settleSecondsLeft}s"
+                                    else -> "⏳ Negotiating VU LMS IPG redirect... Open in Browser stays locked until Bank URL loads"
+                                },
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                            )
                         }
                     }
                 }
@@ -913,19 +1487,135 @@ fun CardPaymentDialog(
                     )
                 }
 
+                if (webError != null) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = webError ?: "Connection error",
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                fontSize = 12.sp,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TextButton(
+                                onClick = {
+                                    webError = null
+                                    isLoading = true
+                                    VuLmsCookieJar.shared.syncToAndroidWebView()
+                                    webViewRef?.loadDataWithBaseURL(
+                                        "https://vulms.vu.edu.pk/AccountBook/AccountBook.aspx",
+                                        formHtml,
+                                        "text/html",
+                                        "UTF-8",
+                                        null
+                                    )
+                                }
+                            ) {
+                                Text("Retry", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+
                 AndroidView(
                     factory = { ctx ->
                         WebView(ctx).apply {
+                            webViewRef = this
+                            val cm = CookieManager.getInstance()
+                            cm.setAcceptCookie(true)
+                            cm.setAcceptThirdPartyCookies(this, true)
+                            VuLmsCookieJar.shared.syncToAndroidWebView()
+
                             settings.javaScriptEnabled = true
                             settings.domStorageEnabled = true
+                            settings.javaScriptCanOpenWindowsAutomatically = true
+                            settings.loadsImagesAutomatically = true
+                            settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
                             settings.loadWithOverviewMode = true
                             settings.useWideViewPort = true
                             settings.builtInZoomControls = true
                             settings.displayZoomControls = false
                             settings.userAgentString = com.example.data.remote.VuLmsNetworkService.USER_AGENT
+
+                            webChromeClient = WebChromeClient()
                             webViewClient = object : WebViewClient() {
+                                override fun shouldOverrideUrlLoading(
+                                    view: WebView?,
+                                    request: WebResourceRequest?
+                                ): Boolean {
+                                    val url = request?.url?.toString().orEmpty()
+                                    if (url.startsWith("http://", true) || url.startsWith("https://", true)) {
+                                        currentWebUrl = url
+                                        return false
+                                    }
+                                    return false
+                                }
+
+                                override fun onPageStarted(
+                                    view: WebView?,
+                                    url: String?,
+                                    favicon: android.graphics.Bitmap?
+                                ) {
+                                    isLoading = true
+                                    webError = null
+                                    if (!url.isNullOrBlank()) {
+                                        currentWebUrl = url
+                                    }
+                                }
+
+                                override fun doUpdateVisitedHistory(
+                                    view: WebView?,
+                                    url: String?,
+                                    isReload: Boolean
+                                ) {
+                                    if (!url.isNullOrBlank()) {
+                                        currentWebUrl = url
+                                    }
+                                }
+
                                 override fun onPageFinished(view: WebView?, url: String?) {
                                     isLoading = false
+                                    if (!url.isNullOrBlank()) {
+                                        currentWebUrl = url
+                                        if (url.contains("LMS_LP.aspx", ignoreCase = true)) {
+                                            webError = "VU LMS session expired. Please close and tap Sync, then retry."
+                                        }
+                                    }
+                                    CookieManager.getInstance().flush()
+                                }
+
+                                override fun onReceivedSslError(
+                                    view: WebView?,
+                                    handler: SslErrorHandler?,
+                                    error: SslError?
+                                ) {
+                                    val host = Uri.parse(error?.url.orEmpty()).host?.lowercase().orEmpty()
+                                    if (host == "vulms.vu.edu.pk" || host.endsWith(".vu.edu.pk")) {
+                                        handler?.proceed()
+                                    } else {
+                                        handler?.cancel()
+                                        isLoading = false
+                                        webError = "Untrusted SSL certificate on $host"
+                                    }
+                                }
+
+                                override fun onReceivedError(
+                                    view: WebView?,
+                                    request: WebResourceRequest?,
+                                    error: WebResourceError?
+                                ) {
+                                    if (request?.isForMainFrame == true) {
+                                        isLoading = false
+                                        webError = error?.description?.toString() ?: "Failed to load payment gateway"
+                                    }
                                 }
                             }
                             loadDataWithBaseURL(

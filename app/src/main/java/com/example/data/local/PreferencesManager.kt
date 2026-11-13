@@ -2,6 +2,10 @@ package com.example.data.local
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.example.data.model.ChallanEntity
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.Types
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -9,6 +13,11 @@ import kotlinx.coroutines.flow.asStateFlow
 class PreferencesManager(context: Context) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("vu_lms_app_prefs", Context.MODE_PRIVATE)
+
+    private val moshi: Moshi = Moshi.Builder().addLast(KotlinJsonAdapterFactory()).build()
+    private val challanListAdapter = moshi.adapter<List<ChallanEntity>>(
+        Types.newParameterizedType(List::class.java, ChallanEntity::class.java)
+    )
 
     private val _studentIdFlow = MutableStateFlow(getStudentId())
     val studentIdFlow: StateFlow<String> = _studentIdFlow.asStateFlow()
@@ -76,23 +85,37 @@ class PreferencesManager(context: Context) {
         )
     }
 
-    fun saveStudentProfile(profile: com.example.data.model.StudentProfile) {
+    fun saveStudentProfile(profile: com.example.data.model.StudentProfile): com.example.data.model.StudentProfile {
+        val existing = getStudentProfile()
+        val merged = com.example.data.model.StudentProfile(
+            studentId = profile.studentId.ifBlank { existing.studentId }.ifBlank { getStudentId() },
+            studentName = profile.studentName.ifBlank { existing.studentName },
+            studyProgram = profile.studyProgram.ifBlank { existing.studyProgram },
+            cgpa = profile.cgpa.ifBlank { existing.cgpa },
+            effectiveCgpa = profile.effectiveCgpa.ifBlank { existing.effectiveCgpa },
+            creditsEarned = profile.creditsEarned.ifBlank { existing.creditsEarned },
+            creditsExempted = profile.creditsExempted.ifBlank { existing.creditsExempted },
+            currentSemesterNo = profile.currentSemesterNo.ifBlank { existing.currentSemesterNo },
+            semesterName = profile.semesterName.ifBlank { existing.semesterName }
+        )
         prefs.edit()
-            .putString("prof_student_id", profile.studentId)
-            .putString("prof_student_name", profile.studentName)
-            .putString("prof_study_program", profile.studyProgram)
-            .putString("prof_cgpa", profile.cgpa)
-            .putString("prof_effective_cgpa", profile.effectiveCgpa)
-            .putString("prof_credits_earned", profile.creditsEarned)
-            .putString("prof_credits_exempted", profile.creditsExempted)
-            .putString("prof_semester_no", profile.currentSemesterNo)
-            .putString("prof_semester_name", profile.semesterName)
-            .apply()
+            .putString("prof_student_id", merged.studentId)
+            .putString("prof_student_name", merged.studentName)
+            .putString("prof_study_program", merged.studyProgram)
+            .putString("prof_cgpa", merged.cgpa)
+            .putString("prof_effective_cgpa", merged.effectiveCgpa)
+            .putString("prof_credits_earned", merged.creditsEarned)
+            .putString("prof_credits_exempted", merged.creditsExempted)
+            .putString("prof_semester_no", merged.currentSemesterNo)
+            .putString("prof_semester_name", merged.semesterName)
+            .commit()
+        return merged
     }
 
     fun saveCurrentSubjects(subjects: List<com.example.data.model.EnrolledSubject>) {
+        if (subjects.isEmpty()) return
         val serialized = subjects.joinToString(";") { "${it.code}|${it.title}" }
-        prefs.edit().putString("cached_enrolled_subjects", serialized).apply()
+        prefs.edit().putString("cached_enrolled_subjects", serialized).commit()
     }
 
     fun getCurrentSubjects(): List<com.example.data.model.EnrolledSubject> {
@@ -104,12 +127,34 @@ class PreferencesManager(context: Context) {
         }
     }
 
+    fun saveChallans(challans: List<ChallanEntity>) {
+        try {
+            // Strip oversized ASP.NET viewstate before persisting JSON
+            val compact = challans.map {
+                it.copy(viewState = "", viewStateGenerator = "", previousPage = "")
+            }
+            val json = challanListAdapter.toJson(compact)
+            prefs.edit().putString("cached_challans_json", json).commit()
+        } catch (_: Exception) {
+        }
+    }
+
+    fun getChallans(): List<ChallanEntity> {
+        val json = prefs.getString("cached_challans_json", "").orEmpty()
+        if (json.isEmpty()) return emptyList()
+        return try {
+            challanListAdapter.fromJson(json).orEmpty()
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
     fun saveLogin(studentId: String, pass: String) {
         prefs.edit()
             .putString(KEY_STUDENT_ID, studentId.trim().uppercase())
             .putString(KEY_PASSWORD, pass)
             .putBoolean(KEY_IS_LOGGED_IN, true)
-            .apply()
+            .commit()
         _studentIdFlow.value = studentId.trim().uppercase()
         _isLoggedInFlow.value = true
     }
@@ -118,8 +163,19 @@ class PreferencesManager(context: Context) {
         prefs.edit()
             .remove(KEY_STUDENT_ID)
             .remove(KEY_PASSWORD)
+            .remove("prof_student_id")
+            .remove("prof_student_name")
+            .remove("prof_study_program")
+            .remove("prof_cgpa")
+            .remove("prof_effective_cgpa")
+            .remove("prof_credits_earned")
+            .remove("prof_credits_exempted")
+            .remove("prof_semester_no")
+            .remove("prof_semester_name")
+            .remove("cached_enrolled_subjects")
+            .remove("cached_challans_json")
             .putBoolean(KEY_IS_LOGGED_IN, false)
-            .apply()
+            .commit()
         _studentIdFlow.value = ""
         _isLoggedInFlow.value = false
     }

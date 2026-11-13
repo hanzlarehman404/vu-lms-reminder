@@ -234,9 +234,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectTab(tab: Int) {
         _selectedTab.value = tab
-        if (tab == 3 && studentProfile.value.studentId.isEmpty() && !_isSyncing.value) {
-            refreshStudentProfile()
-        }
+    }
+
+    suspend fun prepareChallanForPayment(challan: ChallanEntity): ChallanEntity {
+        return repository.prepareChallanForPayment(challan)
+    }
+
+    fun syncCookiesToWebView() {
+        repository.syncCookiesToWebView()
     }
 
     fun refreshStudentProfile() {
@@ -296,6 +301,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _studentAvatarFile.value = repository.getProfileAvatarFile()
                 _studentECardFile.value = repository.getStudentECardFile()
                 _loginState.value = LoginUiState.Success
+                if (!prefs.hasPromptedAutoSync()) {
+                    _showAutoSyncPrompt.value = true
+                }
             } else {
                 val err = result.exceptionOrNull()?.localizedMessage ?: "Login failed. Check your credentials."
                 _loginState.value = LoginUiState.Error(err)
@@ -311,20 +319,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (_isSyncing.value) return
         viewModelScope.launch {
             _isSyncing.value = true
-            if (!silent) _syncMessage.value = "Syncing & auto-checking completed tasks..."
+            if (!silent) _syncMessage.value = "Syncing activities, fees, subjects & profile..."
             val result = repository.syncActivities()
-            _isSyncing.value = false
             if (result.isSuccess) {
+                if (studentProfile.value.cgpa.isEmpty()) {
+                    try {
+                        repository.refreshStudentProfile()
+                    } catch (_: Exception) {
+                    }
+                }
+                if (repository.getStudentECardFile() == null) {
+                    try {
+                        repository.downloadStudentECard()
+                    } catch (_: Exception) {
+                    }
+                }
                 _studentAvatarFile.value = repository.getProfileAvatarFile()
                 _studentECardFile.value = repository.getStudentECardFile()
                 val count = result.getOrNull() ?: 0
-                if (!silent) _syncMessage.value = "Synced $count activities & updated completed statuses"
+                if (!silent) _syncMessage.value = "Synced $count activities, fees & academic profile"
             } else {
                 if (!silent) {
                     val err = result.exceptionOrNull()?.localizedMessage ?: "Sync failed"
                     _syncMessage.value = "Sync failed: $err"
                 }
             }
+            _isSyncing.value = false
         }
     }
 

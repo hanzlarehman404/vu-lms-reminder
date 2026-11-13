@@ -533,17 +533,14 @@ fun StudentPortalScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.MenuBook, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text("Current Semester Subjects", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                             }
                             if (currentSubjects.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(6.dp))
                                 Surface(
                                     shape = RoundedCornerShape(6.dp),
                                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
@@ -624,7 +621,7 @@ fun StudentPortalScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Language, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("🌐 VU Official Portals & Support", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            Text("VU Official Portals & Support", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                         }
 
                         Spacer(modifier = Modifier.height(14.dp))

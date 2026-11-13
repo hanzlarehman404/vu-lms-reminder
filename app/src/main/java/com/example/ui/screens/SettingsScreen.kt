@@ -1,7 +1,15 @@
 package com.example.ui.screens
 
+import android.app.AlarmManager
+import android.app.NotificationManager
+import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -15,26 +23,29 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImage
-import androidx.compose.ui.res.painterResource
 import com.example.R
 import com.example.data.local.PreferencesManager
 import com.example.ui.components.AppDocsDialog
 import com.example.ui.components.PrivacyDisclaimerDialog
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.ManualUpdateResult
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -556,12 +567,16 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = "Alerts & Notifications",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Notifications, contentDescription = null, tint = VuWarningAmber, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Alerts & Notifications",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
 
                         Spacer(modifier = Modifier.height(12.dp))
 
@@ -769,12 +784,16 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = "Theme & Appearance",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Palette, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Theme & Appearance",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                         Spacer(modifier = Modifier.height(10.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOf("system" to "System", "light" to "VU Light", "dark" to "VU Dark").forEach { (mode, label) ->
@@ -795,6 +814,62 @@ fun SettingsScreen(
 
             // Background Execution & Reliability Permissions Card
             item {
+                val lifecycleOwner = LocalLifecycleOwner.current
+                val powerManager = remember { context.getSystemService(Context.POWER_SERVICE) as? PowerManager }
+                val alarmManager = remember { context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager }
+                val notificationManager = remember { context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager }
+
+                var isBatteryUnrestricted by remember {
+                    mutableStateOf(powerManager?.isIgnoringBatteryOptimizations(context.packageName) ?: false)
+                }
+                var isExactAlarmAllowed by remember {
+                    mutableStateOf(
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            alarmManager?.canScheduleExactAlarms() ?: true
+                        } else true
+                    )
+                }
+                var isFullScreenAllowed by remember {
+                    mutableStateOf(
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                            notificationManager?.canUseFullScreenIntent() ?: true
+                        } else true
+                    )
+                }
+
+                DisposableEffect(lifecycleOwner) {
+                    val observer = LifecycleEventObserver { _, event ->
+                        if (event == Lifecycle.Event.ON_RESUME) {
+                            isBatteryUnrestricted = powerManager?.isIgnoringBatteryOptimizations(context.packageName) ?: false
+                            isExactAlarmAllowed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                alarmManager?.canScheduleExactAlarms() ?: true
+                            } else true
+                            isFullScreenAllowed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                                notificationManager?.canUseFullScreenIntent() ?: true
+                            } else true
+                        }
+                    }
+                    lifecycleOwner.lifecycle.addObserver(observer)
+                    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+                }
+
+                fun openAppDetailsSettings(toastHint: String) {
+                    Toast.makeText(context, toastHint, Toast.LENGTH_LONG).show()
+                    try {
+                        val detailsIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.fromParts("package", context.packageName, null)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        context.startActivity(detailsIntent)
+                    } catch (_: Exception) {
+                        try {
+                            context.startActivity(
+                                Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        } catch (_: Exception) {}
+                    }
+                }
+
                 Card(
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -805,7 +880,12 @@ fun SettingsScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.BatteryChargingFull, contentDescription = null, tint = VuGreenPrimary, modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Background Alarm Reliability", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            Text(
+                                text = "System Permissions & Reliability",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
                         }
 
                         Spacer(modifier = Modifier.height(8.dp))
@@ -820,43 +900,162 @@ fun SettingsScreen(
 
                         OutlinedButton(
                             onClick = {
-                                try {
-                                    val intent = Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                                        data = Uri.parse("package:${context.packageName}")
-                                    }
-                                    context.startActivity(intent)
-                                } catch (e: Exception) {
+                                val pm = context.packageManager
+                                val reqIntent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                    data = Uri.parse("package:${context.packageName}")
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                if (!isBatteryUnrestricted && reqIntent.resolveActivity(pm) != null) {
                                     try {
-                                        val intent = Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
-                                        context.startActivity(intent)
-                                    } catch (ignored: Exception) {}
+                                        context.startActivity(reqIntent)
+                                        return@OutlinedButton
+                                    } catch (_: Exception) {}
+                                }
+                                val listIntent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                if (listIntent.resolveActivity(pm) != null) {
+                                    try {
+                                        Toast.makeText(
+                                            context,
+                                            if (isBatteryUnrestricted) "Battery optimization already unrestricted. Select VU LMS Reminder to manage." else "Find VU LMS Reminder and choose Unrestricted / Don't optimize.",
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                        context.startActivity(listIntent)
+                                        return@OutlinedButton
+                                    } catch (_: Exception) {}
+                                }
+                                openAppDetailsSettings("Tap Battery -> Select 'Unrestricted'")
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("battery_optimization_button")
+                        ) {
+                            Icon(
+                                imageVector = if (isBatteryUnrestricted) Icons.Default.CheckCircle else Icons.Default.ElectricBolt,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = VuGreenPrimary
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (isBatteryUnrestricted) "Battery Optimization Disabled ✅ (Manage)" else "Disable Battery Optimization for Alarms",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        OutlinedButton(
+                            onClick = {
+                                val pm = context.packageManager
+                                val autoStartIntents = listOf(
+                                    Intent().setComponent(ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")),
+                                    Intent().setComponent(ComponentName("com.letv.android.letvsafe", "com.letv.android.letvsafe.AutobootManageActivity")),
+                                    Intent().setComponent(ComponentName("com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity")),
+                                    Intent().setComponent(ComponentName("com.huawei.systemmanager", "com.huawei.systemmanager.optimize.process.ProtectActivity")),
+                                    Intent().setComponent(ComponentName("com.huawei.systemmanager", "com.huawei.systemmanager.appcontrol.activity.StartupAppControlActivity")),
+                                    Intent().setComponent(ComponentName("com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity")),
+                                    Intent().setComponent(ComponentName("com.coloros.safecenter", "com.coloros.safecenter.startupapp.StartupAppListActivity")),
+                                    Intent().setComponent(ComponentName("com.oppo.safe", "com.oppo.safe.permission.startup.StartupAppListActivity")),
+                                    Intent().setComponent(ComponentName("com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.AddWhiteListActivity")),
+                                    Intent().setComponent(ComponentName("com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.BgStartUpManager")),
+                                    Intent().setComponent(ComponentName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity")),
+                                    Intent().setComponent(ComponentName("com.samsung.android.lool", "com.samsung.android.sm.battery.ui.BatteryActivity")),
+                                    Intent().setComponent(ComponentName("com.samsung.android.sm", "com.samsung.android.sm.battery.ui.BatteryActivity")),
+                                    Intent().setComponent(ComponentName("com.oneplus.security", "com.oneplus.security.chainlaunch.view.ChainLaunchAppListActivity")),
+                                    Intent().setComponent(ComponentName("com.asus.mobilemanager", "com.asus.mobilemanager.autostart.AutoStartActivity")),
+                                    Intent().setComponent(ComponentName("com.transsion.phonemaster", "com.itel.autobootmanager.activity.AutoBootMgrActivity"))
+                                )
+                                var launched = false
+                                for (candidate in autoStartIntents) {
+                                    candidate.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    if (candidate.resolveActivity(pm) != null) {
+                                        try {
+                                            context.startActivity(candidate)
+                                            Toast.makeText(context, "Enable Auto-Start / Background Run for VU LMS Reminder", Toast.LENGTH_LONG).show()
+                                            launched = true
+                                            break
+                                        } catch (_: Exception) {}
+                                    }
+                                }
+                                if (!launched) {
+                                    openAppDetailsSettings("Tap 'Battery' -> Select 'Unrestricted' & allow Background Usage")
                                 }
                             },
                             shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("auto_run_settings_button")
                         ) {
-                            Icon(Icons.Default.ElectricBolt, contentDescription = null, modifier = Modifier.size(16.dp), tint = VuGreenPrimary)
+                            Icon(Icons.Default.RocketLaunch, contentDescription = null, modifier = Modifier.size(16.dp), tint = VuWarningAmber)
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Disable Battery Optimization for Alarms", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Allow Auto-Run / Background Execution", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                         }
 
-                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                             Spacer(modifier = Modifier.height(6.dp))
                             OutlinedButton(
                                 onClick = {
                                     try {
-                                        val intent = Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                                        val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
                                             data = Uri.parse("package:${context.packageName}")
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                         }
                                         context.startActivity(intent)
-                                    } catch (ignored: Exception) {}
+                                    } catch (e: Exception) {
+                                        openAppDetailsSettings("Allow 'Alarms & reminders' in App Settings")
+                                    }
                                 },
                                 shape = RoundedCornerShape(10.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Icon(Icons.Default.Alarm, contentDescription = null, modifier = Modifier.size(16.dp), tint = VuInfoCyan)
+                                Icon(
+                                    imageVector = if (isExactAlarmAllowed) Icons.Default.CheckCircle else Icons.Default.Alarm,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = if (isExactAlarmAllowed) VuGreenPrimary else VuInfoCyan
+                                )
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Allow Exact Alarm Scheduling", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    text = if (isExactAlarmAllowed) "Exact Alarm Scheduling Allowed ✅" else "Allow Exact Alarm Scheduling",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    try {
+                                        val intent = Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT).apply {
+                                            data = Uri.parse("package:${context.packageName}")
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        openAppDetailsSettings("Enable full-screen notifications for evening alarms")
+                                    }
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(
+                                    imageVector = if (isFullScreenAllowed) Icons.Default.CheckCircle else Icons.Default.NotificationsActive,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = if (isFullScreenAllowed) VuGreenPrimary else VuDangerRed
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (isFullScreenAllowed) "Full-Screen Lock-Screen Alarm Allowed ✅" else "Allow Full-Screen Lock-Screen Alarm",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
                             }
                         }
                     }
@@ -872,6 +1071,19 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Info, contentDescription = null, tint = VuInfoCyan, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "About, Updates & Documentation",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
                         OutlinedButton(
                             onClick = onCheckUpdate,
                             enabled = !isCheckingUpdate,
