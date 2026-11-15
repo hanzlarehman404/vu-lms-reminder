@@ -33,11 +33,18 @@ jobs:
       - name: Prepare Build Environment
         env:
           DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+          INGEST_API_KEY: ${{ secrets.INGEST_API_KEY }}
         run: |
           if [ ! -f .env ] && [ -f .env.example ]; then
             cp .env.example .env
           elif [ ! -f .env ]; then
             touch .env
+          fi
+
+          if [ -n "$INGEST_API_KEY" ]; then
+            grep -v '^INGEST_API_KEY=' .env > .env.tmp || true
+            printf 'INGEST_API_KEY=%s\n' "$INGEST_API_KEY" >> .env.tmp
+            mv .env.tmp .env
           fi
 
           if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
@@ -59,6 +66,8 @@ jobs:
           fi
 
       - name: Build Debug APK
+        env:
+          INGEST_API_KEY: ${{ secrets.INGEST_API_KEY }}
         run: |
           if [ -f gradlew ]; then
             ./gradlew assembleDebug --stacktrace

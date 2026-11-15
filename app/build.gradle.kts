@@ -20,6 +20,27 @@ android {
     versionName = "2.0.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+    buildConfigField("String", "TELEMETRY_BASE_URL", "\"https://vulms-install-status.duckdns.org\"")
+    val ingestApiKey: String = run {
+      val fromEnv = System.getenv("INGEST_API_KEY")?.trim().orEmpty()
+      if (fromEnv.isNotEmpty()) {
+        fromEnv
+      } else {
+        val dotEnv = rootProject.file(".env")
+        if (dotEnv.exists()) {
+          dotEnv.readLines()
+            .firstOrNull { line -> line.trim().startsWith("INGEST_API_KEY=") }
+            ?.substringAfter("=")
+            ?.trim()
+            ?.removeSurrounding("\"")
+            .orEmpty()
+        } else {
+          ""
+        }
+      }
+    }.replace("\\", "\\\\").replace("\"", "\\\"")
+    buildConfigField("String", "INGEST_API_KEY", "\"$ingestApiKey\"")
   }
 
   // Do not remove or modify these signingConfigs. They are necessary for building, installing,
@@ -76,6 +97,7 @@ secrets {
   propertiesFileName = ".env"
   defaultPropertiesFileName = ".env.example"
   ignoreList.add("FIREBASE_APPCHECK_DEBUG_TOKEN")
+  ignoreList.add("INGEST_API_KEY")
 }
 
 googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }
@@ -124,11 +146,13 @@ dependencies {
   implementation(libs.logging.interceptor)
   implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
+  implementation(libs.androidx.work.runtime.ktx)
   // implementation(libs.play.services.location)
   implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)
+  testImplementation(libs.androidx.work.testing)
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.coroutines.test)
   testImplementation(libs.robolectric)

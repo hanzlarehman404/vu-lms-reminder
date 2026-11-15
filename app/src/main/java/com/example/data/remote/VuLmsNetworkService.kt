@@ -5,6 +5,8 @@ import com.example.data.model.ActivityEntity
 import com.example.data.model.AppUpdateInfo
 import com.example.data.model.ChallanEntity
 import com.example.data.model.EnrolledSubject
+import com.example.data.model.RemoteNotificationItem
+import com.example.data.model.RemoteNotificationsFeed
 import com.example.data.model.StudentProfile
 import com.example.data.model.VuRawActivity
 import com.squareup.moshi.Moshi
@@ -57,6 +59,7 @@ class VuLmsNetworkService(
     private val activityListType = Types.newParameterizedType(List::class.java, VuRawActivity::class.java)
     private val activityAdapter = moshi.adapter<List<VuRawActivity>>(activityListType)
     private val updateAdapter = moshi.adapter(AppUpdateInfo::class.java)
+    private val notificationsAdapter = moshi.adapter(RemoteNotificationsFeed::class.java)
 
     fun clearCookies() {
         cookieJar.clear()
@@ -532,6 +535,38 @@ class VuLmsNetworkService(
         Result.failure(lastException ?: IOException("Failed to check for updates. Kindly try again later or contact the developer."))
     }
 
+    /**
+     * Fetches https://raw.githubusercontent.com/hanzlarehman404/vu-lms-reminder/notifications/notifications.json
+     */
+    suspend fun fetchRemoteNotifications(): Result<List<RemoteNotificationItem>> = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder()
+                .url(NOTIFICATIONS_FEED_URL)
+                .header("Cache-Control", "no-cache")
+                .header("Pragma", "no-cache")
+                .get()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(IOException("HTTP ${response.code} fetching notifications"))
+                }
+                val json = response.body?.string().orEmpty().trim()
+                if (json.isEmpty()) {
+                    return@withContext Result.success(emptyList())
+                }
+                val feed = notificationsAdapter.fromJson(json)
+                if (feed != null) {
+                    return@withContext Result.success(feed.notifications)
+                }
+                return@withContext Result.failure(IOException("Invalid notifications JSON format"))
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error fetching remote notifications: ${e.message}")
+            Result.failure(e)
+        }
+    }
+
     private fun parseClassicToDoHtml(html: String): Set<String> {
         val keys = mutableSetOf<String>()
 
@@ -994,6 +1029,7 @@ class VuLmsNetworkService(
         private const val STUDENT_ECARD_VIEW_URL = "https://vulms.vu.edu.pk/StudentServices/Registrar%20Office/PrintStudentECardView.aspx"
         private const val PROFILE_IMAGE_URL = "https://vulms.vu.edu.pk/Profile/GridImageTemplate.aspx"
         private const val UPDATE_CHECK_URL = "https://raw.githubusercontent.com/hanzlarehman404/vu-lms-reminder/default/update.json"
+        const val NOTIFICATIONS_FEED_URL = "https://raw.githubusercontent.com/hanzlarehman404/vu-lms-reminder/notifications/notifications.json"
         const val USER_AGENT = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 
         private val trustAllCerts: Array<TrustManager> = arrayOf(

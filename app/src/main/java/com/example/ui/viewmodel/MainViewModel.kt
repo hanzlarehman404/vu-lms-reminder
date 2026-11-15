@@ -13,7 +13,9 @@ import kotlinx.coroutines.launch
 
 import com.example.data.model.ChallanEntity
 import com.example.data.model.EnrolledSubject
+import com.example.data.model.RemoteNotificationItem
 import com.example.data.model.StudentProfile
+import com.example.ui.components.ManualNotificationsUiState
 import java.io.File
 
 sealed class LoginUiState {
@@ -100,6 +102,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _manualUpdateResult = MutableStateFlow<ManualUpdateResult?>(null)
     val manualUpdateResult: StateFlow<ManualUpdateResult?> = _manualUpdateResult.asStateFlow()
+
+    private val _activeBannerNotifications = MutableStateFlow<List<RemoteNotificationItem>>(emptyList())
+    val activeBannerNotifications: StateFlow<List<RemoteNotificationItem>> = _activeBannerNotifications.asStateFlow()
+
+    private val _allUpcomingNotifications = MutableStateFlow<List<RemoteNotificationItem>>(emptyList())
+    val allUpcomingNotifications: StateFlow<List<RemoteNotificationItem>> = _allUpcomingNotifications.asStateFlow()
+
+    private val _activePopupNotification = MutableStateFlow<RemoteNotificationItem?>(null)
+    val activePopupNotification: StateFlow<RemoteNotificationItem?> = _activePopupNotification.asStateFlow()
+
+    private val _isCheckingNotifications = MutableStateFlow(false)
+    val isCheckingNotifications: StateFlow<Boolean> = _isCheckingNotifications.asStateFlow()
+
+    private val _manualNotificationsState = MutableStateFlow<ManualNotificationsUiState?>(null)
+    val manualNotificationsState: StateFlow<ManualNotificationsUiState?> = _manualNotificationsState.asStateFlow()
 
     private val _studentAvatarFile = MutableStateFlow<File?>(repository.getProfileAvatarFile())
     val studentAvatarFile: StateFlow<File?> = _studentAvatarFile.asStateFlow()
@@ -218,6 +235,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         checkForAppUpdates()
+        fetchRemoteNotifications(isManual = false)
     }
 
     fun setAutoSyncChoice(enabled: Boolean) {
@@ -352,6 +370,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _studentECardFile.value = repository.getStudentECardFile()
                 val count = result.getOrNull() ?: 0
                 if (!silent) showSyncMessage("Synced $count activities, fees & academic profile")
+                fetchRemoteNotifications(isManual = false)
             } else {
                 if (!silent) {
                     val err = result.exceptionOrNull()?.localizedMessage ?: "Sync failed"
@@ -422,6 +441,55 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun dismissUpdateDialog() {
         _updateInfo.value = null
+    }
+
+    fun fetchRemoteNotifications(isManual: Boolean = false) {
+        viewModelScope.launch {
+            if (isManual) {
+                _isCheckingNotifications.value = true
+                _manualNotificationsState.value = null
+            }
+            val result = repository.fetchRemoteNotifications()
+            if (isManual) {
+                _isCheckingNotifications.value = false
+            }
+            if (result.isSuccess) {
+                val now = System.currentTimeMillis()
+                val versionCode = BuildConfig.VERSION_CODE
+                val eligible = result.getOrNull().orEmpty()
+                    .filter { it.isCurrentlyEligible(nowMillis = now, currentVersionCode = versionCode) }
+                    .sortedByDescending { it.priority }
+
+                _allUpcomingNotifications.value = eligible
+                _activeBannerNotifications.value = eligible.filter { it.showBanner }
+
+                val popupCandidate = eligible.firstOrNull { item ->
+                    item.showPopup && prefs.canShowNotificationPopup(item, nowMillis = now)
+                }
+                if (popupCandidate != null && !isManual) {
+                    _activePopupNotification.value = popupCandidate
+                }
+
+                if (isManual) {
+                    _manualNotificationsState.value = ManualNotificationsUiState.Loaded(eligible)
+                }
+            } else if (isManual) {
+                _manualNotificationsState.value = ManualNotificationsUiState.Error(
+                    "Unable to reach GitHub right now. Please check your internet connection and try again."
+                )
+            }
+        }
+    }
+
+    fun dismissNotificationPopup(notificationId: String) {
+        if (notificationId.isNotBlank()) {
+            prefs.markNotificationPopupShown(notificationId)
+        }
+        _activePopupNotification.value = null
+    }
+
+    fun dismissManualNotificationsDialog() {
+        _manualNotificationsState.value = null
     }
 
     fun logout() {

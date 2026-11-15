@@ -3,6 +3,8 @@ package com.example.data.local
 import android.content.Context
 import android.content.SharedPreferences
 import com.example.data.model.ChallanEntity
+import com.example.data.model.RemoteNotificationItem
+import com.example.data.model.RemoteNotificationSchedule
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -236,6 +238,49 @@ class PreferencesManager(context: Context) {
         _appThemeFlow.value = theme
     }
 
+    fun getPopupLastShownTimestamp(notificationId: String): Long {
+        if (notificationId.isBlank()) return 0L
+        val raw = prefs.getString(KEY_NOTIFICATION_POPUP_SHOWN_MAP, "").orEmpty()
+        if (raw.isEmpty()) return 0L
+        return try {
+            val obj = org.json.JSONObject(raw)
+            obj.optLong(notificationId, 0L)
+        } catch (_: Exception) {
+            0L
+        }
+    }
+
+    fun markNotificationPopupShown(notificationId: String, timestampMs: Long = System.currentTimeMillis()) {
+        if (notificationId.isBlank()) return
+        val raw = prefs.getString(KEY_NOTIFICATION_POPUP_SHOWN_MAP, "").orEmpty()
+        val obj = try {
+            if (raw.isNotEmpty()) org.json.JSONObject(raw) else org.json.JSONObject()
+        } catch (_: Exception) {
+            org.json.JSONObject()
+        }
+        obj.put(notificationId, timestampMs)
+        prefs.edit().putString(KEY_NOTIFICATION_POPUP_SHOWN_MAP, obj.toString()).commit()
+    }
+
+    fun canShowNotificationPopup(
+        item: RemoteNotificationItem,
+        nowMillis: Long = System.currentTimeMillis()
+    ): Boolean {
+        if (!item.showPopup || item.id.isBlank()) return false
+        if (item.popupFrequency.equals(RemoteNotificationItem.FREQUENCY_ALWAYS, ignoreCase = true)) {
+            return true
+        }
+        val lastShown = getPopupLastShownTimestamp(item.id)
+        if (lastShown <= 0L) return true
+        if (item.popupFrequency.equals(RemoteNotificationItem.FREQUENCY_ONCE_PER_ID, ignoreCase = true)) {
+            return false
+        }
+        // Default: once_per_day (compare local calendar day)
+        val lastDay = RemoteNotificationSchedule.localCalendarDayKey(lastShown)
+        val todayDay = RemoteNotificationSchedule.localCalendarDayKey(nowMillis)
+        return lastDay != todayDay
+    }
+
     companion object {
         private const val KEY_STUDENT_ID = "student_id"
         private const val KEY_PASSWORD = "student_password"
@@ -257,5 +302,6 @@ class PreferencesManager(context: Context) {
         private const val KEY_APP_THEME = "app_theme_mode" // "system", "light", "dark"
         private const val KEY_AUTO_SYNC_ON_LAUNCH = "auto_sync_on_launch"
         private const val KEY_HAS_PROMPTED_AUTO_SYNC = "has_prompted_auto_sync"
+        private const val KEY_NOTIFICATION_POPUP_SHOWN_MAP = "remote_notification_popup_shown_map"
     }
 }

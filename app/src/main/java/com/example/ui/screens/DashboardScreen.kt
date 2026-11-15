@@ -36,9 +36,13 @@ import androidx.compose.ui.res.painterResource
 import com.example.R
 import coil.compose.AsyncImage
 import com.example.data.model.ActivityEntity
+import com.example.data.model.RemoteNotificationItem
 import com.example.ui.components.ActivityCard
 import com.example.ui.components.ActivityDetailDialog
 import com.example.ui.components.CountdownTimerCard
+import com.example.ui.components.ManualNotificationsUiState
+import com.example.ui.components.MovingNoticeBanner
+import com.example.ui.components.UpcomingNoticesDialog
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.DashboardStats
 import java.text.SimpleDateFormat
@@ -66,11 +70,14 @@ fun DashboardScreen(
     onToggleCompletion: (activityId: String, completed: Boolean) -> Unit = { _, _ -> },
     onMarkAllAvailableDone: () -> Unit = {},
     onSyncNow: () -> Unit,
-    onClearSyncMessage: () -> Unit
+    onClearSyncMessage: () -> Unit,
+    bannerNotifications: List<RemoteNotificationItem> = emptyList(),
+    allUpcomingNotifications: List<RemoteNotificationItem> = emptyList()
 ) {
     val context = LocalContext.current
     var selectedActivityForDetail by remember { mutableStateOf<ActivityEntity?>(null) }
     var showResyncWarningDialog by remember { mutableStateOf(false) }
+    var showBannerDetailDialog by remember { mutableStateOf(false) }
 
     val infiniteTransition = rememberInfiniteTransition(label = "sync_spin")
     val rotation by infiniteTransition.animateFloat(
@@ -128,6 +135,14 @@ fun DashboardScreen(
         ActivityDetailDialog(
             activity = selectedActivityForDetail!!,
             onDismiss = { selectedActivityForDetail = null }
+        )
+    }
+
+    if (showBannerDetailDialog) {
+        val itemsToDisplay = allUpcomingNotifications.ifEmpty { bannerNotifications }
+        UpcomingNoticesDialog(
+            state = ManualNotificationsUiState.Loaded(itemsToDisplay),
+            onDismiss = { showBannerDetailDialog = false }
         )
     }
 
@@ -255,6 +270,11 @@ fun DashboardScreen(
                     }
                 }
             }
+
+            MovingNoticeBanner(
+                notifications = bannerNotifications,
+                onBannerClick = { showBannerDetailDialog = true }
+            )
 
             LazyColumn(
                 modifier = Modifier

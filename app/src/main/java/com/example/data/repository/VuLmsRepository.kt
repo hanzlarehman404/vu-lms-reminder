@@ -15,6 +15,7 @@ import kotlinx.coroutines.withContext
 
 import com.example.data.model.ChallanEntity
 import com.example.data.model.EnrolledSubject
+import com.example.data.model.RemoteNotificationItem
 import com.example.data.model.StudentProfile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -372,6 +373,10 @@ class VuLmsRepository(
 
     suspend fun checkForUpdate(): Result<AppUpdateInfo> = withContext(Dispatchers.IO) {
         networkService.checkAppUpdate()
+    }
+
+    suspend fun fetchRemoteNotifications(): Result<List<RemoteNotificationItem>> = withContext(Dispatchers.IO) {
+        networkService.fetchRemoteNotifications()
     }
 
     suspend fun logout() = withContext(Dispatchers.IO) {

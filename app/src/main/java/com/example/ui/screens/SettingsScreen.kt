@@ -41,7 +41,9 @@ import coil.compose.AsyncImage
 import com.example.R
 import com.example.data.local.PreferencesManager
 import com.example.ui.components.AppDocsDialog
+import com.example.ui.components.ManualNotificationsUiState
 import com.example.ui.components.PrivacyDisclaimerDialog
+import com.example.ui.components.UpcomingNoticesDialog
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.ManualUpdateResult
 import kotlinx.coroutines.delay
@@ -55,9 +57,13 @@ fun SettingsScreen(
     studentAvatarFile: java.io.File? = null,
     isCheckingUpdate: Boolean = false,
     manualUpdateResult: ManualUpdateResult? = null,
+    isCheckingNotifications: Boolean = false,
+    manualNotificationsState: ManualNotificationsUiState? = null,
     onLogout: () -> Unit,
     onCheckUpdate: () -> Unit,
     onDismissManualUpdateResult: () -> Unit = {},
+    onCheckUpcomingNotifications: () -> Unit = {},
+    onDismissManualNotifications: () -> Unit = {},
     onSetTheme: (String) -> Unit
 ) {
     val context = LocalContext.current
@@ -308,6 +314,14 @@ fun SettingsScreen(
             )
         }
         null -> {}
+    }
+
+    manualNotificationsState?.let { notifState ->
+        UpcomingNoticesDialog(
+            state = notifState,
+            onRetry = onCheckUpcomingNotifications,
+            onDismiss = onDismissManualNotifications
+        )
     }
 
     Scaffold(
@@ -1085,11 +1099,41 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.height(4.dp))
 
                         OutlinedButton(
+                            onClick = onCheckUpcomingNotifications,
+                            enabled = !isCheckingNotifications,
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .testTag("check_upcoming_notices_button")
+                        ) {
+                            if (isCheckingNotifications) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Fetching Upcoming Notices...", fontSize = 12.sp)
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Campaign,
+                                    contentDescription = null,
+                                    tint = VuInfoCyan,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("What's Upcoming & Announcements", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+
+                        OutlinedButton(
                             onClick = onCheckUpdate,
                             enabled = !isCheckingUpdate,
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .heightIn(min = 48.dp)
                                 .testTag("check_update_button")
                         ) {
                             if (isCheckingUpdate) {

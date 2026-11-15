@@ -37,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.ui.components.AnnouncementPopupDialog
 import com.example.ui.components.UpdateDialog
 import com.example.ui.screens.AccountBookScreen
 import com.example.ui.screens.CalendarScreen
@@ -70,6 +71,11 @@ class MainActivity : ComponentActivity() {
                 val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
                 val updateInfo by viewModel.updateInfo.collectAsStateWithLifecycle()
                 val showAutoSyncPrompt by viewModel.showAutoSyncPrompt.collectAsStateWithLifecycle()
+                val activeBannerNotifications by viewModel.activeBannerNotifications.collectAsStateWithLifecycle()
+                val allUpcomingNotifications by viewModel.allUpcomingNotifications.collectAsStateWithLifecycle()
+                val activePopupNotification by viewModel.activePopupNotification.collectAsStateWithLifecycle()
+                val isCheckingNotifications by viewModel.isCheckingNotifications.collectAsStateWithLifecycle()
+                val manualNotificationsState by viewModel.manualNotificationsState.collectAsStateWithLifecycle()
 
                 // Check for In-App Update dialog
                 updateInfo?.let { info ->
@@ -77,6 +83,16 @@ class MainActivity : ComponentActivity() {
                         updateInfo = info,
                         onDismiss = { viewModel.dismissUpdateDialog() }
                     )
+                }
+
+                // Once-per-day Remote Announcement popup (yields if UpdateDialog or AutoSync prompt is visible)
+                if (isLoggedIn && updateInfo == null && !showAutoSyncPrompt) {
+                    activePopupNotification?.let { announcement ->
+                        AnnouncementPopupDialog(
+                            notification = announcement,
+                            onDismiss = { viewModel.dismissNotificationPopup(announcement.id) }
+                        )
+                    }
                 }
 
                 // First-time prompt for Auto-Sync on Launch
@@ -266,7 +282,9 @@ class MainActivity : ComponentActivity() {
                                     onToggleUpcomingOnly = { viewModel.toggleUpcomingOnly(it) },
                                     onSearchQueryChanged = { viewModel.setSearchQuery(it) },
                                     onSyncNow = { viewModel.syncNow() },
-                                    onClearSyncMessage = { viewModel.clearSyncMessage() }
+                                    onClearSyncMessage = { viewModel.clearSyncMessage() },
+                                    bannerNotifications = activeBannerNotifications,
+                                    allUpcomingNotifications = allUpcomingNotifications
                                 )
 
                                 1 -> CalendarScreen(
@@ -300,9 +318,13 @@ class MainActivity : ComponentActivity() {
                                     studentAvatarFile = studentAvatarFile,
                                     isCheckingUpdate = isCheckingUpdate,
                                     manualUpdateResult = manualUpdateResult,
+                                    isCheckingNotifications = isCheckingNotifications,
+                                    manualNotificationsState = manualNotificationsState,
                                     onLogout = { viewModel.logout() },
                                     onCheckUpdate = { viewModel.checkForAppUpdates(isManual = true) },
                                     onDismissManualUpdateResult = { viewModel.dismissManualUpdateResult() },
+                                    onCheckUpcomingNotifications = { viewModel.fetchRemoteNotifications(isManual = true) },
+                                    onDismissManualNotifications = { viewModel.dismissManualNotificationsDialog() },
                                     onSetTheme = { viewModel.setAppTheme(it) }
                                 )
                             }
