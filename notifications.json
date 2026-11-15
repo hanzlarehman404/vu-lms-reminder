@@ -1,0 +1,31 @@
+{
+  "notifications": [
+    {
+      "id": "banner-major-v21",
+      "active": true,
+      "showBanner": true,
+      "showPopup": false,
+      "popupFrequency": "once_per_id",
+      "priority": 100,
+      "severity": "UPCOMING",
+      "badge": "COMING SOON",
+      "title": "Version 3.0 Preview",
+      "bannerText": "Help Us Reach 2,000 Downloads! 🚀\nWe'll Add AI Auto-Solving for Quizzes, Assignments & GDBs!",
+      "message": "Help us reach our 2K download milestone to unlock this exciting new feature!",
+      "maxVersionCode": 2
+    },
+    {
+      "id": "popup-midterm-alert",
+      "active": true,
+      "showBanner": false,
+      "showPopup": true,
+      "popupFrequency": "once_per_day",
+      "priority": 90,
+      "severity": "NOTICE",
+      "badge": "ADVISE",
+      "title": "Midterms Coming in Early December!",
+      "message": "Midterm exams are approaching! Start preparing now, revise your lessons, and avoid last-minute stress. Good luck with your preparation!",
+      "expiresAt": "2026-12-03"
+    }
+  ]
+}
