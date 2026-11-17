@@ -294,7 +294,7 @@ fun StudentPortalScreen(
                                 }
 
                                 Text(
-                                    text = if (eCardFile != null && eCardFile.exists()) "PDF Saved Offline" else "Official Digital ID",
+                                    text = if (eCardFile != null && eCardFile.exists()) "Saved Offline • ${eCardFile.name}" else "Official Digital ID",
                                     color = Color.White.copy(alpha = 0.72f),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium
@@ -323,11 +323,11 @@ fun StudentPortalScreen(
                                                 }
                                                 context.startActivity(intent)
                                             } catch (e: Exception) {
-                                                val browserIntent = Intent(
-                                                    Intent.ACTION_VIEW,
-                                                    Uri.parse("https://vulms.vu.edu.pk/StudentServices/Registrar%20Office/PrintStudentECardView.aspx")
-                                                )
-                                                context.startActivity(browserIntent)
+                                                android.widget.Toast.makeText(
+                                                    context,
+                                                    "No PDF viewer app found to open ${eCardFile.name}.",
+                                                    android.widget.Toast.LENGTH_LONG
+                                                ).show()
                                             }
                                         } else {
                                             onDownloadECard()

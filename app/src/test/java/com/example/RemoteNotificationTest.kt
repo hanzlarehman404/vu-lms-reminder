@@ -7,16 +7,21 @@ import com.example.data.model.RemoteNotificationItem
 import com.example.data.model.RemoteNotificationSchedule
 import com.example.data.model.RemoteNotificationsFeed
 import com.example.data.remote.VuLmsNetworkService
+import com.example.data.repository.VuLmsRepository
+import com.example.receiver.RemoteNotificationScheduler
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
@@ -33,6 +38,8 @@ class RemoteNotificationTest {
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
         context.getSharedPreferences("vu_lms_app_prefs", Context.MODE_PRIVATE).edit().clear().commit()
+        File(context.filesDir, "student_ecard.pdf").delete()
+        File(context.filesDir, "BC230401234.pdf").delete()
         prefs = PreferencesManager(context)
     }
 
@@ -45,7 +52,7 @@ class RemoteNotificationTest {
     }
 
     @Test
-    fun `moshi parses notifications feed and preserves display toggles and highlights`() {
+    fun `moshi parses notifications feed including status bar parameters`() {
         val sampleJson = """
             {
               "notifications": [
@@ -54,7 +61,10 @@ class RemoteNotificationTest {
                   "active": true,
                   "showBanner": true,
                   "showPopup": false,
+                  "showNotificationBar": true,
                   "popupFrequency": "once_per_day",
+                  "notificationBarFrequency": "interval",
+                  "notificationBarCooldownMinutes": 180,
                   "priority": 50,
                   "severity": "major_update",
                   "badge": "UPCOMING",
@@ -80,6 +90,9 @@ class RemoteNotificationTest {
         assertTrue(item.active)
         assertTrue(item.showBanner)
         assertFalse(item.showPopup)
+        assertTrue(item.showNotificationBar)
+        assertEquals("interval", item.notificationBarFrequency)
+        assertEquals(180, item.notificationBarCooldownMinutes)
         assertEquals(listOf("Fast sync", "Exam countdown"), item.highlights)
         assertEquals("v2.1 drops next week!", item.effectiveBannerLine())
     }
@@ -132,9 +145,7 @@ class RemoteNotificationTest {
         assertTrue(prefs.canShowNotificationPopup(dailyPopup, nowMillis = day1Morning))
         prefs.markNotificationPopupShown(dailyPopup.id, timestampMs = day1Morning)
 
-        // Same day -> suppressed
         assertFalse(prefs.canShowNotificationPopup(dailyPopup, nowMillis = day1Evening))
-        // Next calendar day -> allowed once again while active & unexpired
         assertTrue(prefs.canShowNotificationPopup(dailyPopup, nowMillis = day2Morning))
 
         val oncePerIdPopup = dailyPopup.copy(
@@ -144,5 +155,91 @@ class RemoteNotificationTest {
         assertTrue(prefs.canShowNotificationPopup(oncePerIdPopup, nowMillis = day1Morning))
         prefs.markNotificationPopupShown(oncePerIdPopup.id, timestampMs = day1Morning)
         assertFalse(prefs.canShowNotificationPopup(oncePerIdPopup, nowMillis = day2Morning))
+    }
+
+    @Test
+    fun `status bar notification respects once_per_id once_per_day interval and always parameters`() {
+        val t0 = RemoteNotificationSchedule.parseUtcTimestampMillis("2026-11-15T09:00:00Z")!!
+        val tPlus30Min = t0 + (30 * 60_000L)
+        val tPlus60Min = t0 + (60 * 60_000L)
+        val day2 = RemoteNotificationSchedule.parseUtcTimestampMillis("2026-11-16T09:00:00Z")!!
+
+        val onceIdItem = RemoteNotificationItem(
+            id = "bar-once-id",
+            showNotificationBar = true,
+            notificationBarFrequency = RemoteNotificationItem.BAR_FREQUENCY_ONCE_PER_ID,
+            title = "Once"
+        )
+        assertEquals(
+            1,
+            RemoteNotificationScheduler.dispatchSystemNotificationsIfEligible(
+                context = context,
+                eligibleItems = listOf(onceIdItem),
+                prefs = prefs,
+                nowMillis = t0,
+                postNotification = { true }
+            )
+        )
+        // Next day -> still suppressed for once_per_id
+        assertEquals(
+            0,
+            RemoteNotificationScheduler.dispatchSystemNotificationsIfEligible(
+                context = context,
+                eligibleItems = listOf(onceIdItem),
+                prefs = prefs,
+                nowMillis = day2,
+                postNotification = { true }
+            )
+        )
+
+        val intervalItem = RemoteNotificationItem(
+            id = "bar-interval",
+            showNotificationBar = true,
+            notificationBarFrequency = RemoteNotificationItem.BAR_FREQUENCY_INTERVAL,
+            notificationBarCooldownMinutes = 60,
+            title = "Interval"
+        )
+        assertTrue(prefs.canShowNotificationBar(intervalItem, nowMillis = t0))
+        prefs.markNotificationBarShown(intervalItem.id, timestampMs = t0)
+        assertFalse(prefs.canShowNotificationBar(intervalItem, nowMillis = tPlus30Min))
+        assertTrue(prefs.canShowNotificationBar(intervalItem, nowMillis = tPlus60Min))
+
+        val dailyBarItem = RemoteNotificationItem(
+            id = "bar-daily",
+            showNotificationBar = true,
+            notificationBarFrequency = RemoteNotificationItem.BAR_FREQUENCY_ONCE_PER_DAY,
+            title = "Daily Bar"
+        )
+        assertTrue(prefs.canShowNotificationBar(dailyBarItem, nowMillis = t0))
+        prefs.markNotificationBarShown(dailyBarItem.id, timestampMs = t0)
+        assertFalse(prefs.canShowNotificationBar(dailyBarItem, nowMillis = tPlus60Min))
+        assertTrue(prefs.canShowNotificationBar(dailyBarItem, nowMillis = day2))
+    }
+
+    @Test
+    fun `pdf validator rejects corrupted html and repository stores valid ecard by roll number`() {
+        val htmlFakePdf = "<!DOCTYPE html><html><body>Login required</body></html>".padEnd(200, ' ')
+            .toByteArray()
+        assertFalse(VuLmsNetworkService.isValidPdfBytes(htmlFakePdf))
+
+        val validPdfBytes = ("%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n" + "0".repeat(120))
+            .toByteArray()
+        assertTrue(VuLmsNetworkService.isValidPdfBytes(validPdfBytes))
+
+        prefs.saveLogin("bc230401234", "secret")
+        val repo = VuLmsRepository(context = context, prefs = prefs)
+
+        // Legacy corrupted file is automatically purged and rejected
+        val legacyCorrupted = File(context.filesDir, "student_ecard.pdf")
+        legacyCorrupted.writeBytes(htmlFakePdf)
+        assertNull(repo.getStudentECardFile())
+        assertFalse(legacyCorrupted.exists())
+
+        // Valid roll-number PDF is preserved cleanly for offline viewing without duplicates
+        val rollPdf = File(context.filesDir, "BC230401234.pdf")
+        rollPdf.writeBytes(validPdfBytes)
+        val resolved = repo.getStudentECardFile()
+        assertNotNull(resolved)
+        assertEquals("BC230401234.pdf", resolved?.name)
     }
 }

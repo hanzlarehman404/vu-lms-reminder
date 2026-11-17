@@ -7,8 +7,13 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.net.http.SslError
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.text.TextUtils
+import android.view.ViewGroup
 import android.webkit.CookieManager
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -1318,6 +1323,14 @@ fun CardPaymentDialog(
     var webError by remember { mutableStateOf<String?>(null) }
     var settleSecondsLeft by remember { mutableIntStateOf(4) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
+    var webViewGeneration by remember { mutableIntStateOf(0) }
+    var isDialogActive by remember { mutableStateOf(true) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            isDialogActive = false
+        }
+    }
 
     // Ensure session cookies from VuLmsCookieJar are flushed to Android CookieManager before opening
     LaunchedEffect(challan.challanNo) {
@@ -1412,27 +1425,62 @@ fun CardPaymentDialog(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.fillMaxWidth()) {
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 14.dp, vertical = 10.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.CreditCard, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CreditCard,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp)
+                                    )
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text("VU Card Payment (IPG)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                    Text(
+                                        text = "VU Card Payment (IPG)",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                 }
-                                Text(
-                                    text = "Challan #${challan.challanNo} • PKR ${challan.payableAmount}",
-                                    color = Color.White.copy(alpha = 0.8f),
-                                    fontSize = 12.sp
-                                )
+
+                                IconButton(
+                                    onClick = onDismiss,
+                                    modifier = Modifier.minimumInteractiveComponentSize()
+                                ) {
+                                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                                }
                             }
 
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Challan #${challan.challanNo} • PKR ${challan.payableAmount}",
+                                    color = Color.White.copy(alpha = 0.84f),
+                                    fontSize = 12.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(end = 10.dp)
+                                )
+
                                 FilledTonalButton(
                                     onClick = {
                                         if (isBrowserButtonActive) {
@@ -1451,51 +1499,51 @@ fun CardPaymentDialog(
                                         disabledContentColor = Color.White.copy(alpha = 0.55f)
                                     ),
                                     shape = RoundedCornerShape(8.dp),
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                                     modifier = Modifier
-                                        .height(34.dp)
+                                        .heightIn(min = 36.dp)
                                         .testTag("card_payment_open_browser_button")
                                 ) {
                                     Icon(
                                         imageVector = if (isBrowserButtonActive) Icons.Default.OpenInBrowser else Icons.Default.LockClock,
-                                        contentDescription = "Open Final Bank URL in Browser",
+                                        contentDescription = "Open in Browser",
                                         modifier = Modifier.size(15.dp)
                                     )
-                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = when {
-                                            isBrowserButtonActive -> "Open Bank URL"
+                                            isBrowserButtonActive -> "Open in Browser"
                                             isExternalGateway && !isLoading -> "Wait ${settleSecondsLeft}s"
                                             else -> "Locked"
                                         },
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
-                                }
-
-                                IconButton(onClick = onDismiss) {
-                                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
                                 }
                             }
                         }
 
-                        // Status banner explaining lock & redirect stage
-                        Surface(
-                            color = if (isBrowserButtonActive) VuGreenPrimary.copy(alpha = 0.25f) else Color.Black.copy(alpha = 0.25f),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = when {
-                                    webError != null -> "⚠️ Gateway error: $webError"
-                                    isBrowserButtonActive -> "✅ Bank Alfalah gateway ready — tap 'Open Bank URL' to pay in browser without session loss."
-                                    isExternalGateway && isLoading -> "⏳ Loading final Bank Alfalah gateway page..."
-                                    isExternalGateway -> "🔒 Securing final Bank Alfalah URL... Open in Browser unlocks in ${settleSecondsLeft}s"
-                                    else -> "⏳ Negotiating VU LMS IPG redirect... Open in Browser stays locked until Bank URL loads"
-                                },
-                                color = Color.White,
-                                fontSize = 11.sp,
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                            )
+                        if (webError != null || !isBrowserButtonActive) {
+                            Surface(
+                                color = Color.Black.copy(alpha = 0.25f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = when {
+                                        webError != null -> "⚠️ Gateway error: $webError"
+                                        isExternalGateway && isLoading -> "⏳ Loading payment gateway page..."
+                                        isExternalGateway -> "🔒 Securing gateway URL... Open in Browser unlocks in ${settleSecondsLeft}s"
+                                        else -> "⏳ Negotiating VU LMS IPG redirect... Open in Browser stays locked until gateway loads"
+                                    },
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -1530,13 +1578,18 @@ fun CardPaymentDialog(
                                     webError = null
                                     isLoading = true
                                     VuLmsCookieJar.shared.syncToAndroidWebView()
-                                    webViewRef?.loadDataWithBaseURL(
-                                        "https://vulms.vu.edu.pk/AccountBook/AccountBook.aspx",
-                                        formHtml,
-                                        "text/html",
-                                        "UTF-8",
-                                        null
-                                    )
+                                    val activeView = webViewRef
+                                    if (activeView != null) {
+                                        activeView.loadDataWithBaseURL(
+                                            "https://vulms.vu.edu.pk/AccountBook/AccountBook.aspx",
+                                            formHtml,
+                                            "text/html",
+                                            "UTF-8",
+                                            null
+                                        )
+                                    } else {
+                                        webViewGeneration++
+                                    }
                                 }
                             ) {
                                 Text("Retry", fontWeight = FontWeight.Bold)
@@ -1545,110 +1598,165 @@ fun CardPaymentDialog(
                     }
                 }
 
-                AndroidView(
-                    factory = { ctx ->
-                        WebView(ctx).apply {
-                            webViewRef = this
-                            val cm = CookieManager.getInstance()
-                            cm.setAcceptCookie(true)
-                            cm.setAcceptThirdPartyCookies(this, true)
-                            VuLmsCookieJar.shared.syncToAndroidWebView()
+                key(webViewGeneration) {
+                    AndroidView(
+                        factory = { ctx ->
+                            WebView(ctx).apply {
+                                webViewRef = this
+                                runCatching {
+                                    val cm = CookieManager.getInstance()
+                                    cm.setAcceptCookie(true)
+                                    cm.setAcceptThirdPartyCookies(this, true)
+                                }
+                                VuLmsCookieJar.shared.syncToAndroidWebView()
 
-                            settings.javaScriptEnabled = true
-                            settings.domStorageEnabled = true
-                            settings.javaScriptCanOpenWindowsAutomatically = true
-                            settings.loadsImagesAutomatically = true
-                            settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-                            settings.loadWithOverviewMode = true
-                            settings.useWideViewPort = true
-                            settings.builtInZoomControls = true
-                            settings.displayZoomControls = false
-                            settings.userAgentString = com.example.data.remote.VuLmsNetworkService.USER_AGENT
+                                settings.javaScriptEnabled = true
+                                settings.domStorageEnabled = true
+                                settings.javaScriptCanOpenWindowsAutomatically = true
+                                settings.loadsImagesAutomatically = true
+                                settings.allowFileAccess = false
+                                settings.allowContentAccess = false
+                                settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                                settings.loadWithOverviewMode = true
+                                settings.useWideViewPort = true
+                                settings.builtInZoomControls = true
+                                settings.displayZoomControls = false
+                                settings.userAgentString = com.example.data.remote.VuLmsNetworkService.USER_AGENT
 
-                            webChromeClient = WebChromeClient()
-                            webViewClient = object : WebViewClient() {
-                                override fun shouldOverrideUrlLoading(
-                                    view: WebView?,
-                                    request: WebResourceRequest?
-                                ): Boolean {
-                                    val url = request?.url?.toString().orEmpty()
-                                    if (url.startsWith("http://", true) || url.startsWith("https://", true)) {
-                                        currentWebUrl = url
+                                webChromeClient = WebChromeClient()
+                                webViewClient = object : WebViewClient() {
+                                    override fun shouldOverrideUrlLoading(
+                                        view: WebView?,
+                                        request: WebResourceRequest?
+                                    ): Boolean {
+                                        if (!isDialogActive) return true
+                                        val url = request?.url?.toString().orEmpty()
+                                        if (url.startsWith("http://", true) || url.startsWith("https://", true)) {
+                                            currentWebUrl = url
+                                            return false
+                                        }
                                         return false
                                     }
-                                    return false
-                                }
 
-                                override fun onPageStarted(
-                                    view: WebView?,
-                                    url: String?,
-                                    favicon: android.graphics.Bitmap?
-                                ) {
-                                    isLoading = true
-                                    webError = null
-                                    if (!url.isNullOrBlank()) {
-                                        currentWebUrl = url
-                                    }
-                                }
-
-                                override fun doUpdateVisitedHistory(
-                                    view: WebView?,
-                                    url: String?,
-                                    isReload: Boolean
-                                ) {
-                                    if (!url.isNullOrBlank()) {
-                                        currentWebUrl = url
-                                    }
-                                }
-
-                                override fun onPageFinished(view: WebView?, url: String?) {
-                                    isLoading = false
-                                    if (!url.isNullOrBlank()) {
-                                        currentWebUrl = url
-                                        if (url.contains("LMS_LP.aspx", ignoreCase = true)) {
-                                            webError = "VU LMS session expired. Please close and tap Sync, then retry."
+                                    override fun onPageStarted(
+                                        view: WebView?,
+                                        url: String?,
+                                        favicon: android.graphics.Bitmap?
+                                    ) {
+                                        if (!isDialogActive) return
+                                        isLoading = true
+                                        webError = null
+                                        if (!url.isNullOrBlank()) {
+                                            currentWebUrl = url
                                         }
                                     }
-                                    CookieManager.getInstance().flush()
-                                }
 
-                                override fun onReceivedSslError(
-                                    view: WebView?,
-                                    handler: SslErrorHandler?,
-                                    error: SslError?
-                                ) {
-                                    val host = Uri.parse(error?.url.orEmpty()).host?.lowercase().orEmpty()
-                                    if (host == "vulms.vu.edu.pk" || host.endsWith(".vu.edu.pk")) {
-                                        handler?.proceed()
-                                    } else {
+                                    override fun doUpdateVisitedHistory(
+                                        view: WebView?,
+                                        url: String?,
+                                        isReload: Boolean
+                                    ) {
+                                        if (!isDialogActive) return
+                                        if (!url.isNullOrBlank()) {
+                                            currentWebUrl = url
+                                        }
+                                    }
+
+                                    override fun onPageFinished(view: WebView?, url: String?) {
+                                        if (!isDialogActive) return
+                                        isLoading = false
+                                        if (!url.isNullOrBlank()) {
+                                            currentWebUrl = url
+                                            if (url.contains("LMS_LP.aspx", ignoreCase = true)) {
+                                                webError = "VU LMS session expired. Please close and tap Sync, then retry."
+                                            }
+                                        }
+                                        runCatching { CookieManager.getInstance().flush() }
+                                    }
+
+                                    override fun onReceivedSslError(
+                                        view: WebView?,
+                                        handler: SslErrorHandler?,
+                                        error: SslError?
+                                    ) {
+                                        val host = Uri.parse(error?.url.orEmpty()).host?.lowercase().orEmpty()
                                         handler?.cancel()
+                                        if (!isDialogActive) return
                                         isLoading = false
-                                        webError = "Untrusted SSL certificate on $host"
+                                        webError = "Untrusted SSL certificate on ${host.ifEmpty { "gateway" }}"
                                     }
-                                }
 
-                                override fun onReceivedError(
-                                    view: WebView?,
-                                    request: WebResourceRequest?,
-                                    error: WebResourceError?
-                                ) {
-                                    if (request?.isForMainFrame == true) {
-                                        isLoading = false
-                                        webError = error?.description?.toString() ?: "Failed to load payment gateway"
+                                    override fun onReceivedError(
+                                        view: WebView?,
+                                        request: WebResourceRequest?,
+                                        error: WebResourceError?
+                                    ) {
+                                        if (!isDialogActive) return
+                                        if (request?.isForMainFrame == true) {
+                                            isLoading = false
+                                            webError = error?.description?.toString() ?: "Failed to load payment gateway"
+                                        }
+                                    }
+
+                                    override fun onRenderProcessGone(
+                                        view: WebView?,
+                                        detail: RenderProcessGoneDetail?
+                                    ): Boolean {
+                                        if (webViewRef === view) {
+                                            webViewRef = null
+                                        }
+                                        runCatching {
+                                            view?.stopLoading()
+                                            view?.onPause()
+                                            (view?.parent as? ViewGroup)?.removeView(view)
+                                            view?.removeAllViews()
+                                            view?.destroy()
+                                        }
+                                        if (isDialogActive) {
+                                            isLoading = false
+                                            val crashed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                                detail?.didCrash() == true
+                                            } else {
+                                                true
+                                            }
+                                            webError = if (crashed) {
+                                                "Payment browser renderer crashed. Tap Retry to reload."
+                                            } else {
+                                                "Payment browser was closed by the system. Tap Retry to reload."
+                                            }
+                                        }
+                                        return true
                                     }
                                 }
+                                loadDataWithBaseURL(
+                                    "https://vulms.vu.edu.pk/AccountBook/AccountBook.aspx",
+                                    formHtml,
+                                    "text/html",
+                                    "UTF-8",
+                                    null
+                                )
                             }
-                            loadDataWithBaseURL(
-                                "https://vulms.vu.edu.pk/AccountBook/AccountBook.aspx",
-                                formHtml,
-                                "text/html",
-                                "UTF-8",
-                                null
-                            )
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
+                        },
+                        onRelease = { view ->
+                            isDialogActive = false
+                            if (webViewRef === view) {
+                                webViewRef = null
+                            }
+                            runCatching {
+                                view.stopLoading()
+                                view.onPause()
+                                view.webChromeClient = null
+                                view.clearHistory()
+                                (view.parent as? ViewGroup)?.removeView(view)
+                                view.removeAllViews()
+                            }
+                            Handler(Looper.getMainLooper()).post {
+                                runCatching { view.destroy() }
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
             }
         }
     }

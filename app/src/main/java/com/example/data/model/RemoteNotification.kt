@@ -18,7 +18,10 @@ data class RemoteNotificationItem(
     @Json(name = "active") val active: Boolean = true,
     @Json(name = "showBanner") val showBanner: Boolean = true,
     @Json(name = "showPopup") val showPopup: Boolean = true,
+    @Json(name = "showNotificationBar") val showNotificationBar: Boolean = false,
     @Json(name = "popupFrequency") val popupFrequency: String = FREQUENCY_ONCE_PER_DAY,
+    @Json(name = "notificationBarFrequency") val notificationBarFrequency: String = BAR_FREQUENCY_ONCE_PER_ID,
+    @Json(name = "notificationBarCooldownMinutes") val notificationBarCooldownMinutes: Int = 60,
     @Json(name = "priority") val priority: Int = 0,
     @Json(name = "severity") val severity: String = SEVERITY_INFO,
     @Json(name = "badge") val badge: String = "",
@@ -86,6 +89,11 @@ data class RemoteNotificationItem(
         const val FREQUENCY_ONCE_PER_DAY = "once_per_day"
         const val FREQUENCY_ONCE_PER_ID = "once_per_id"
         const val FREQUENCY_ALWAYS = "always"
+
+        const val BAR_FREQUENCY_ONCE_PER_ID = "once_per_id"
+        const val BAR_FREQUENCY_ONCE_PER_DAY = "once_per_day"
+        const val BAR_FREQUENCY_INTERVAL = "interval"
+        const val BAR_FREQUENCY_ALWAYS = "always"
 
         const val SEVERITY_INFO = "info"
         const val SEVERITY_MAJOR_UPDATE = "major_update"

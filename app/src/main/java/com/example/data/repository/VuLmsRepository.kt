@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
+import java.util.Locale
 
 class VuLmsRepository(
     private val context: Context,
@@ -225,9 +226,39 @@ class VuLmsRepository(
         return remoteActivities.size
     }
 
+    private fun resolveECardFile(studentId: String = prefs.getStudentId()): File {
+        val cleanRollNo = studentId.trim()
+            .uppercase(Locale.US)
+            .replace(Regex("[^A-Z0-9_-]"), "")
+        val filename = if (cleanRollNo.isNotEmpty()) "${cleanRollNo}.pdf" else "student_ecard.pdf"
+        return File(context.filesDir, filename)
+    }
+
     fun getStudentECardFile(): File? {
-        val file = File(context.filesDir, "student_ecard.pdf")
-        return if (file.exists() && file.length() > 0) file else null
+        val target = resolveECardFile()
+        if (target.exists()) {
+            if (VuLmsNetworkService.isValidPdfFile(target)) {
+                return target
+            }
+            // Purge previously corrupted non-PDF cache
+            runCatching { target.delete() }
+        }
+
+        // Handle legacy student_ecard.pdf: migrate if valid PDF, purge if corrupted HTML
+        val legacyFile = File(context.filesDir, "student_ecard.pdf")
+        if (legacyFile.exists() && legacyFile.absolutePath != target.absolutePath) {
+            if (VuLmsNetworkService.isValidPdfFile(legacyFile)) {
+                if (runCatching { legacyFile.renameTo(target) }.getOrDefault(false) &&
+                    VuLmsNetworkService.isValidPdfFile(target)
+                ) {
+                    return target
+                }
+                return legacyFile
+            } else {
+                runCatching { legacyFile.delete() }
+            }
+        }
+        return null
     }
 
     suspend fun refreshStudentProfile(): Result<StudentProfile> = withContext(Dispatchers.IO) {
@@ -334,8 +365,37 @@ class VuLmsRepository(
     }
 
     suspend fun downloadStudentECard(): Result<File> = withContext(Dispatchers.IO) {
-        val target = File(context.filesDir, "student_ecard.pdf")
-        networkService.downloadStudentECard(target)
+        getStudentECardFile()?.let { cachedValid ->
+            return@withContext Result.success(cachedValid)
+        }
+
+        val target = resolveECardFile()
+        if (!networkService.hasSessionCookie() && prefs.isLoggedIn()) {
+            val studentId = prefs.getStudentId()
+            val pass = prefs.getPassword()
+            if (studentId.isNotEmpty() && pass.isNotEmpty()) {
+                val tokens = networkService.fetchLoginPage().getOrNull()
+                if (tokens != null) {
+                    networkService.submitLogin(studentId, pass, tokens)
+                }
+            }
+        }
+
+        var result = networkService.downloadStudentECard(target)
+        if (result.isFailure && prefs.isLoggedIn()) {
+            val studentId = prefs.getStudentId()
+            val pass = prefs.getPassword()
+            if (studentId.isNotEmpty() && pass.isNotEmpty()) {
+                val tokens = networkService.fetchLoginPage().getOrNull()
+                if (tokens != null) {
+                    val loginRes = networkService.submitLogin(studentId, pass, tokens)
+                    if (loginRes.isSuccess) {
+                        result = networkService.downloadStudentECard(target)
+                    }
+                }
+            }
+        }
+        result
     }
 
     fun getProfileAvatarFile(): File? {
@@ -385,6 +445,7 @@ class VuLmsRepository(
         for (a in all) {
             alarmScheduler.cancelAlarmsForActivity(a.id)
         }
+        val targetECard = resolveECardFile()
         networkService.clearCookies()
         prefs.clearLogin()
         dao.clearAll()
@@ -393,6 +454,7 @@ class VuLmsRepository(
         _studentProfileFlow.value = StudentProfile()
         try { java.io.File(context.filesDir, "student_avatar.jpg").delete() } catch (ignored: Exception) {}
         try { java.io.File(context.filesDir, "student_ecard.pdf").delete() } catch (ignored: Exception) {}
+        try { targetECard.delete() } catch (ignored: Exception) {}
     }
 
     fun getPreferences(): PreferencesManager = prefs

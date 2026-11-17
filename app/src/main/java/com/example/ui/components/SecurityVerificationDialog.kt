@@ -208,7 +208,7 @@ fun SecurityVerificationDialog(
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text("App Version:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                    Text("v2.0.0 (${current.updateInfo.version})", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text("v${BuildConfig.VERSION_NAME} (${current.updateInfo.version})", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
 
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))

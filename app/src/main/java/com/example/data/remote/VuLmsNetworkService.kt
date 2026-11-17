@@ -19,13 +19,8 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
 import java.net.URLEncoder
-import java.security.SecureRandom
-import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
 import java.util.regex.Pattern
-import javax.net.ssl.SSLContext
-import javax.net.ssl.TrustManager
-import javax.net.ssl.X509TrustManager
 
 data class LoginPageTokens(
     val viewState: String,
@@ -49,7 +44,6 @@ class VuLmsNetworkService(
         writeTimeout(25, TimeUnit.SECONDS)
         followRedirects(true)
         followSslRedirects(true)
-        configureSsl(this)
     }.build()
 
     private val moshi: Moshi = Moshi.Builder()
@@ -399,35 +393,79 @@ class VuLmsNetworkService(
 
     /**
      * GET https://vulms.vu.edu.pk/StudentServices/Registrar%20Office/PrintStudentECard.aspx to download E-Card PDF.
+     * Validates %PDF- binary signature and primes PrintStudentECardView.aspx if ASP.NET returns HTML first.
      */
     suspend fun downloadStudentECard(outputFile: java.io.File): Result<java.io.File> = withContext(Dispatchers.IO) {
         try {
-            val request = Request.Builder()
-                .url(STUDENT_ECARD_URL)
-                .header("User-Agent", USER_AGENT)
-                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/jxl,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
-                .header("Accept-Language", "en-US,en;q=0.9")
-                .header("Cache-Control", "no-cache")
-                .header("Pragma", "no-cache")
-                .header("Referer", STUDENT_ECARD_VIEW_URL)
-                .get()
-                .build()
+            fun executePdfRequest(): Pair<Int, Pair<String, ByteArray?>> {
+                val request = Request.Builder()
+                    .url(STUDENT_ECARD_URL)
+                    .header("User-Agent", USER_AGENT)
+                    .header("Accept", "application/pdf,application/octet-stream;q=0.9,*/*;q=0.8")
+                    .header("Accept-Language", "en-US,en;q=0.9")
+                    .header("Cache-Control", "no-cache")
+                    .header("Pragma", "no-cache")
+                    .header("Referer", STUDENT_ECARD_VIEW_URL)
+                    .get()
+                    .build()
 
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    return@withContext Result.failure(IOException("Failed to download E-Card PDF (HTTP ${response.code})"))
+                client.newCall(request).execute().use { response ->
+                    val contentType = response.header("Content-Type").orEmpty()
+                    if (!response.isSuccessful) {
+                        return response.code to (contentType to null)
+                    }
+                    return response.code to (contentType to response.body?.bytes())
                 }
-
-                val body = response.body ?: return@withContext Result.failure(IOException("Empty response body for student card"))
-                val bytes = body.bytes()
-                if (bytes.size < 100) {
-                    return@withContext Result.failure(IOException("Downloaded E-Card file is too small or invalid"))
-                }
-
-                outputFile.parentFile?.mkdirs()
-                outputFile.writeBytes(bytes)
-                Result.success(outputFile)
             }
+
+            var (statusCode, payloadPair) = executePdfRequest()
+            var contentType = payloadPair.first
+            var bytes = payloadPair.second
+
+            // If VU LMS returned HTML instead of application/pdf (e.g. ASP.NET E-Card view session not primed),
+            // visit PrintStudentECardView.aspx first and retry PrintStudentECard.aspx once.
+            if (bytes == null || !isValidPdfBytes(bytes)) {
+                runCatching {
+                    val viewReq = Request.Builder()
+                        .url(STUDENT_ECARD_VIEW_URL)
+                        .header("User-Agent", USER_AGENT)
+                        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                        .header("Referer", "https://vulms.vu.edu.pk/home.aspx")
+                        .get()
+                        .build()
+                    client.newCall(viewReq).execute().close()
+                }
+                val retry = executePdfRequest()
+                statusCode = retry.first
+                contentType = retry.second.first
+                bytes = retry.second.second
+            }
+
+            if (bytes == null) {
+                return@withContext Result.failure(IOException("Failed to download E-Card PDF (HTTP $statusCode)"))
+            }
+
+            if (!isValidPdfBytes(bytes)) {
+                if (outputFile.exists() && !isValidPdfFile(outputFile)) {
+                    runCatching { outputFile.delete() }
+                }
+                val kind = contentType.substringBefore(";").ifBlank { "non-PDF response" }
+                return@withContext Result.failure(
+                    IOException("VU LMS returned $kind instead of a valid E-Card PDF (session may have expired)")
+                )
+            }
+
+            outputFile.parentFile?.mkdirs()
+            val tempFile = java.io.File(outputFile.parentFile, "${outputFile.name}.tmp")
+            tempFile.writeBytes(bytes)
+            if (outputFile.exists()) {
+                outputFile.delete()
+            }
+            if (!tempFile.renameTo(outputFile)) {
+                outputFile.writeBytes(bytes)
+                runCatching { tempFile.delete() }
+            }
+            Result.success(outputFile)
         } catch (e: Exception) {
             Log.e(TAG, "Error downloading student E-Card", e)
             Result.failure(e)
@@ -565,6 +603,42 @@ class VuLmsNetworkService(
             Log.w(TAG, "Error fetching remote notifications: ${e.message}")
             Result.failure(e)
         }
+    }
+
+    /**
+     * Fetches the latest README.md directly from the GitHub repository.
+     */
+    suspend fun fetchReadmeMarkdown(): Result<String> = withContext(Dispatchers.IO) {
+        val urlsToTry = listOf(
+            README_DEFAULT_URL,
+            "https://raw.githubusercontent.com/hanzlarehman404/vu-lms-reminder/main/README.md",
+            "https://raw.githubusercontent.com/hanzlarehman404/vu-lms-reminder/dev/README.md",
+            "https://raw.githubusercontent.com/hanzlarehman404/vu-lms-reminder/master/README.md"
+        )
+        var lastException: Exception? = null
+        for (url in urlsToTry) {
+            try {
+                val request = Request.Builder()
+                    .url(url)
+                    .header("Cache-Control", "no-cache")
+                    .header("Pragma", "no-cache")
+                    .get()
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val markdown = response.body?.string().orEmpty().trim()
+                        if (markdown.isNotEmpty()) {
+                            return@withContext Result.success(markdown)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                lastException = e
+                Log.w(TAG, "Error fetching README from $url: ${e.message}")
+            }
+        }
+        Result.failure(lastException ?: IOException("Unable to load README.md from GitHub."))
     }
 
     private fun parseClassicToDoHtml(html: String): Set<String> {
@@ -1030,39 +1104,56 @@ class VuLmsNetworkService(
         private const val PROFILE_IMAGE_URL = "https://vulms.vu.edu.pk/Profile/GridImageTemplate.aspx"
         private const val UPDATE_CHECK_URL = "https://raw.githubusercontent.com/hanzlarehman404/vu-lms-reminder/default/update.json"
         const val NOTIFICATIONS_FEED_URL = "https://raw.githubusercontent.com/hanzlarehman404/vu-lms-reminder/notifications/notifications.json"
+        const val README_DEFAULT_URL = "https://raw.githubusercontent.com/hanzlarehman404/vu-lms-reminder/default/README.md"
         const val USER_AGENT = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 
-        private val trustAllCerts: Array<TrustManager> = arrayOf(
-            object : X509TrustManager {
-                override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
-                override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
-                override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+        fun isValidPdfBytes(bytes: ByteArray): Boolean {
+            if (bytes.size < 100) return false
+            var idx = 0
+            // Skip optional UTF-8 BOM
+            if (bytes.size >= 3 &&
+                (bytes[0].toInt() and 0xFF) == 0xEF &&
+                (bytes[1].toInt() and 0xFF) == 0xBB &&
+                (bytes[2].toInt() and 0xFF) == 0xBF
+            ) {
+                idx = 3
             }
-        )
-
-        private val sslSocketFactory = try {
-            val sslContext = SSLContext.getInstance("TLS")
-            sslContext.init(null, trustAllCerts, SecureRandom())
-            sslContext.socketFactory
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to create custom SSLContext", e)
-            null
+            while (idx < bytes.size && idx < 16) {
+                val b = bytes[idx].toInt() and 0xFF
+                if (b == 0x20 || b == 0x09 || b == 0x0A || b == 0x0D) {
+                    idx++
+                } else {
+                    break
+                }
+            }
+            if (idx + 5 > bytes.size) return false
+            return bytes[idx] == '%'.code.toByte() &&
+                bytes[idx + 1] == 'P'.code.toByte() &&
+                bytes[idx + 2] == 'D'.code.toByte() &&
+                bytes[idx + 3] == 'F'.code.toByte() &&
+                bytes[idx + 4] == '-'.code.toByte()
         }
 
-        fun configureSsl(builder: OkHttpClient.Builder): OkHttpClient.Builder {
-            if (sslSocketFactory != null) {
-                builder.sslSocketFactory(sslSocketFactory, trustAllCerts[0] as X509TrustManager)
-                builder.hostnameVerifier { _, _ -> true }
+        fun isValidPdfFile(file: java.io.File): Boolean {
+            if (!file.exists() || !file.isFile || file.length() < 100L) return false
+            return try {
+                val header = ByteArray(24)
+                val readCount = file.inputStream().use { it.read(header) }
+                if (readCount < 5) return false
+                val probe = ByteArray(100)
+                val copyLen = minOf(readCount, probe.size)
+                System.arraycopy(header, 0, probe, 0, copyLen)
+                isValidPdfBytes(probe)
+            } catch (_: Exception) {
+                false
             }
-            return builder
         }
 
         /**
-         * Shared OkHttpClient for Coil and general image loading.
-         * Bypasses the untrusted certificate chain on vulms.vu.edu.pk and adds required browser headers.
+         * Shared OkHttpClient for Coil and general image loading with VU LMS browser headers.
          */
         val sharedImageOkHttpClient: OkHttpClient by lazy {
-            val builder = OkHttpClient.Builder()
+            OkHttpClient.Builder()
                 .cookieJar(VuLmsCookieJar.shared)
                 .connectTimeout(20, TimeUnit.SECONDS)
                 .readTimeout(25, TimeUnit.SECONDS)
@@ -1079,7 +1170,7 @@ class VuLmsNetworkService(
                     }
                     chain.proceed(newRequestBuilder.build())
                 }
-            configureSsl(builder).build()
+                .build()
         }
     }
 }

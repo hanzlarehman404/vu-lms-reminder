@@ -1,25 +1,45 @@
 package com.example.ui.screens
 
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -28,13 +48,16 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.res.painterResource
-import com.example.R
 import coil.compose.AsyncImage
+import com.example.R
 import com.example.ui.components.PrivacyDisclaimerDialog
 import com.example.ui.components.SecurityVerificationDialog
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.LoginUiState
+
+private val LoginBgTop = Color(0xFF0C1526)
+private val LoginBgBottom = Color(0xFF13223D)
+private val LoginCardSurface = Color(0xFF17253F)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,12 +68,29 @@ fun LoginScreen(
     onLogin: (studentId: String, password: String) -> Unit,
     onResetLoginState: () -> Unit
 ) {
+    val context = LocalContext.current
     var studentId by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var showSecurityVerification by remember { mutableStateOf(false) }
     var validationError by remember { mutableStateOf<String?>(null) }
     val focusManager = LocalFocusManager.current
+
+    fun submitCredentials() {
+        focusManager.clearFocus()
+        when {
+            studentId.isBlank() -> {
+                validationError = "Please enter your VU Student ID (e.g. bc240417499)"
+            }
+            password.isBlank() -> {
+                validationError = "Please enter your LMS password"
+            }
+            else -> {
+                validationError = null
+                showSecurityVerification = true
+            }
+        }
+    }
 
     if (!isPrivacyAccepted) {
         PrivacyDisclaimerDialog(onAccept = onAcceptPrivacy)
@@ -66,272 +106,513 @@ fun LoginScreen(
         )
     }
 
-    Scaffold(
-        contentWindowInsets = WindowInsets.safeDrawing
-    ) { paddingValues ->
-        Box(
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(LoginBgTop, LoginBgBottom)
+                )
+            )
+    ) {
+        // Subtle restrained cyan ambient glow
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(VuInfoCyan.copy(alpha = 0.16f), Color.Transparent),
+                    center = Offset(size.width * 0.5f, size.height * 0.14f),
+                    radius = size.minDimension * 0.62f
+                ),
+                radius = size.minDimension * 0.62f,
+                center = Offset(size.width * 0.5f, size.height * 0.14f)
+            )
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(VuSuccessMint.copy(alpha = 0.08f), Color.Transparent),
+                    center = Offset(size.width * 0.15f, size.height * 0.88f),
+                    radius = size.minDimension * 0.55f
+                ),
+                radius = size.minDimension * 0.55f,
+                center = Offset(size.width * 0.15f, size.height * 0.88f)
+            )
+        }
+
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
-                .background(MaterialTheme.colorScheme.background)
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .imePadding()
         ) {
+            val viewportMinHeight = maxHeight
+
             Column(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 24.dp)
-                    .verticalScroll(rememberScrollState()),
+                    .fillMaxWidth()
+                    .heightIn(min = viewportMinHeight)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 18.dp, vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+                verticalArrangement = Arrangement.SpaceBetween
             ) {
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // Official VU LMS Logo (16:10 aspect ratio) with bundled vector fallback
-                AsyncImage(
-                    model = "https://vulms.vu.edu.pk/App_Themes/Default/Images/logos/logo-1.png",
-                    placeholder = painterResource(R.drawable.ic_vu_logo),
-                    error = painterResource(R.drawable.ic_vu_logo),
-                    fallback = painterResource(R.drawable.ic_vu_logo),
-                    contentDescription = "Virtual University Logo",
-                    contentScale = ContentScale.Fit,
+                // Top Hero Branding (unboxed logo over soft cyan glow)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
-                        .fillMaxWidth(0.7f)
-                        .aspectRatio(16f / 10f)
-                )
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                Text(
-                    text = "VU LMS Reminder",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-
-                Text(
-                    text = "Virtual University of Pakistan",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = VuSuccessMint.copy(alpha = 0.12f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, VuSuccessMint.copy(alpha = 0.35f))
+                        .fillMaxWidth()
+                        .widthIn(max = 520.dp)
+                        .padding(top = 6.dp)
                 ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.size(width = 156.dp, height = 92.dp)
+                    ) {
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            drawCircle(
+                                brush = Brush.radialGradient(
+                                    colors = listOf(
+                                        VuInfoCyan.copy(alpha = 0.22f),
+                                        Color.Transparent
+                                    ),
+                                    center = center,
+                                    radius = size.minDimension * 0.68f
+                                )
+                            )
+                        }
+                        AsyncImage(
+                            model = "https://vulms.vu.edu.pk/App_Themes/Default/Images/logos/logo-1.png",
+                            placeholder = painterResource(R.drawable.ic_vu_logo),
+                            error = painterResource(R.drawable.ic_vu_logo),
+                            fallback = painterResource(R.drawable.ic_vu_logo),
+                            contentDescription = "Virtual University Logo",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .width(124.dp)
+                                .aspectRatio(16f / 10f)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
                     Text(
-                        text = "🔒 Direct Connection to vulms.vu.edu.pk",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = VuSuccessMint,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+                        text = "VU LMS Reminder",
+                        fontSize = 23.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White,
+                        textAlign = TextAlign.Center
                     )
-                }
 
-                Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
 
-                // Login Form Card
-                Card(
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(2.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier.padding(20.dp)
+                    Text(
+                        text = "🎓 Virtual University of Pakistan",
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFFB5C7E2),
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = VuSuccessMint.copy(alpha = 0.14f),
+                        border = BorderStroke(1.dp, VuSuccessMint.copy(alpha = 0.42f))
                     ) {
                         Text(
-                            text = "Student Sign In",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            text = "🔒 Direct SSL • vulms.vu.edu.pk",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF9AF3DA),
+                            modifier = Modifier.padding(horizontal = 13.dp, vertical = 5.dp)
                         )
+                    }
+                }
 
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        // Student ID Input with changed placeholder bc240417499
-                        OutlinedTextField(
-                            value = studentId,
-                            onValueChange = {
-                                studentId = it
-                                onResetLoginState()
-                            },
-                            label = { Text("VU Student ID") },
-                            placeholder = { Text("e.g. bc240417499") },
-                            leadingIcon = {
-                                Icon(Icons.Default.Person, contentDescription = null, tint = VuInfoCyan)
-                            },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Text,
-                                imeAction = ImeAction.Next
-                            ),
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("student_id_input")
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Password Input
-                        OutlinedTextField(
-                            value = password,
-                            onValueChange = {
-                                password = it
-                                onResetLoginState()
-                            },
-                            label = { Text("LMS Password") },
-                            leadingIcon = {
-                                Icon(Icons.Default.Lock, contentDescription = null, tint = VuInfoCyan)
-                            },
-                            trailingIcon = {
-                                IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                                    Icon(
-                                        imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                        contentDescription = if (passwordVisible) "Hide password" else "Show password"
-                                    )
-                                }
-                            },
-                            singleLine = true,
-                            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Password,
-                                imeAction = ImeAction.Done
-                            ),
-                            keyboardActions = KeyboardActions(
-                                onDone = {
-                                    focusManager.clearFocus()
-                                    when {
-                                        studentId.isBlank() -> {
-                                            validationError = "Please enter your VU Student ID (e.g. bc240417499)"
-                                        }
-                                        password.isBlank() -> {
-                                            validationError = "Please enter your LMS password"
-                                        }
-                                        else -> {
-                                            validationError = null
-                                            showSecurityVerification = true
-                                        }
-                                    }
-                                }
-                            ),
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("password_input")
-                        )
-
-                        // Error message
-                        if (loginState is LoginUiState.Error) {
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.errorContainer
-                            ) {
-                                Text(
-                                    text = loginState.message,
-                                    color = MaterialTheme.colorScheme.onErrorContainer,
-                                    fontSize = 12.sp,
-                                    modifier = Modifier.padding(10.dp)
-                                )
-                            }
-                        }
-
-                        // Loading state
-                        if (loginState is LoginUiState.Loading) {
-                            Spacer(modifier = Modifier.height(14.dp))
+                // Sign-In Form Card
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = 520.dp)
+                        .padding(vertical = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = LoginCardSurface.copy(alpha = 0.94f),
+                        shadowElevation = 8.dp,
+                        border = BorderStroke(1.dp, VuInfoCyan.copy(alpha = 0.32f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 22.dp)
+                        ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.Center,
+                                horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(18.dp),
-                                    strokeWidth = 2.dp,
-                                    color = VuInfoCyan
-                                )
-                                Spacer(modifier = Modifier.width(10.dp))
                                 Text(
-                                    text = loginState.step,
-                                    fontSize = 12.sp,
-                                    color = VuInfoCyan,
-                                    fontWeight = FontWeight.Medium
+                                    text = "👋 Student Sign In",
+                                    fontSize = 18.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
                                 )
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = VuInfoCyan.copy(alpha = 0.14f),
+                                    border = BorderStroke(1.dp, VuInfoCyan.copy(alpha = 0.35f))
+                                ) {
+                                    Text(
+                                        text = "🛡️ Encrypted",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFA9DCFF),
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
                             }
-                        }
 
-                        if (validationError != null) {
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.errorContainer
+                            Spacer(modifier = Modifier.height(18.dp))
+
+                            val darkInputColors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                focusedBorderColor = VuInfoCyan,
+                                unfocusedBorderColor = Color.White.copy(alpha = 0.22f),
+                                focusedLabelColor = VuInfoCyan,
+                                unfocusedLabelColor = Color(0xFFA6B7D4),
+                                focusedPlaceholderColor = Color(0xFF7B8EAC),
+                                unfocusedPlaceholderColor = Color(0xFF7B8EAC),
+                                cursorColor = VuInfoCyan,
+                                focusedContainerColor = LoginBgTop.copy(alpha = 0.72f),
+                                unfocusedContainerColor = LoginBgTop.copy(alpha = 0.52f)
+                            )
+
+                            OutlinedTextField(
+                                value = studentId,
+                                onValueChange = {
+                                    studentId = it
+                                    validationError = null
+                                    onResetLoginState()
+                                },
+                                label = { Text("VU Student ID") },
+                                placeholder = { Text("e.g. bc240417499") },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Person, contentDescription = null, tint = VuInfoCyan)
+                                },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Text,
+                                    imeAction = ImeAction.Next
+                                ),
+                                colors = darkInputColors,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("student_id_input")
+                            )
+
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            OutlinedTextField(
+                                value = password,
+                                onValueChange = {
+                                    password = it
+                                    validationError = null
+                                    onResetLoginState()
+                                },
+                                label = { Text("LMS Password") },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Lock, contentDescription = null, tint = VuInfoCyan)
+                                },
+                                trailingIcon = {
+                                    IconButton(
+                                        onClick = { passwordVisible = !passwordVisible },
+                                        modifier = Modifier.minimumInteractiveComponentSize()
+                                    ) {
+                                        Icon(
+                                            imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                            contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                                            tint = Color(0xFFB5C7E3)
+                                        )
+                                    }
+                                },
+                                singleLine = true,
+                                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Password,
+                                    imeAction = ImeAction.Done
+                                ),
+                                keyboardActions = KeyboardActions(
+                                    onDone = { submitCredentials() }
+                                ),
+                                colors = darkInputColors,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("password_input")
+                            )
+
+                            AnimatedVisibility(
+                                visible = loginState is LoginUiState.Error,
+                                enter = fadeIn() + expandVertically(),
+                                exit = fadeOut() + shrinkVertically()
                             ) {
-                                Text(
-                                    text = validationError!!,
-                                    color = MaterialTheme.colorScheme.onErrorContainer,
-                                    fontSize = 12.sp,
-                                    modifier = Modifier.padding(10.dp)
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(18.dp))
-
-                        Button(
-                            onClick = {
-                                focusManager.clearFocus()
-                                when {
-                                    studentId.isBlank() -> {
-                                        validationError = "Please enter your VU Student ID (e.g. bc240417499)"
-                                    }
-                                    password.isBlank() -> {
-                                        validationError = "Please enter your LMS password"
-                                    }
-                                    else -> {
-                                        validationError = null
-                                        showSecurityVerification = true
+                                if (loginState is LoginUiState.Error) {
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = VuDangerRed.copy(alpha = 0.16f),
+                                        border = BorderStroke(1.dp, VuDangerRed.copy(alpha = 0.5f)),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 12.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.padding(10.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.ErrorOutline,
+                                                contentDescription = null,
+                                                tint = Color(0xFFFF9AAD),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = loginState.message,
+                                                color = Color(0xFFFFD6DE),
+                                                fontSize = 12.sp,
+                                                lineHeight = 16.sp
+                                            )
+                                        }
                                     }
                                 }
-                            },
-                            enabled = loginState !is LoginUiState.Loading,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(50.dp)
-                                .testTag("login_button"),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = VuInfoCyan)
-                        ) {
-                            Icon(
-                                Icons.Default.Lock,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Verify & Sign In",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp,
-                                color = Color.White
-                            )
+                            }
+
+                            AnimatedVisibility(
+                                visible = validationError != null,
+                                enter = fadeIn() + expandVertically(),
+                                exit = fadeOut() + shrinkVertically()
+                            ) {
+                                validationError?.let { msg ->
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = VuDangerRed.copy(alpha = 0.16f),
+                                        border = BorderStroke(1.dp, VuDangerRed.copy(alpha = 0.5f)),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 12.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.padding(10.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.ErrorOutline,
+                                                contentDescription = null,
+                                                tint = Color(0xFFFF9AAD),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = msg,
+                                                color = Color(0xFFFFD6DE),
+                                                fontSize = 12.sp,
+                                                lineHeight = 16.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            AnimatedVisibility(
+                                visible = loginState is LoginUiState.Loading,
+                                enter = fadeIn() + expandVertically(),
+                                exit = fadeOut() + shrinkVertically()
+                            ) {
+                                if (loginState is LoginUiState.Loading) {
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = VuInfoCyan.copy(alpha = 0.14f),
+                                        border = BorderStroke(1.dp, VuInfoCyan.copy(alpha = 0.4f)),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 14.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                                            horizontalArrangement = Arrangement.Center,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(18.dp),
+                                                strokeWidth = 2.dp,
+                                                color = VuInfoCyan
+                                            )
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Text(
+                                                text = loginState.step,
+                                                fontSize = 12.sp,
+                                                color = Color(0xFFA8DCFF),
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(20.dp))
+
+                            Button(
+                                onClick = { submitCredentials() },
+                                enabled = loginState !is LoginUiState.Loading,
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = VuInfoCyan),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 52.dp)
+                                    .testTag("login_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.VerifiedUser,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                    tint = Color.White
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Verify SHA256 & Sign In",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.5.sp,
+                                    color = Color.White
+                                )
+                            }
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                // Bottom Highlight Chips + Open Source GitHub Reference
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = 520.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        LoginFeatureTile(
+                            emoji = "⏰",
+                            accent = VuWarningAmber,
+                            title = "Smart Alarms",
+                            modifier = Modifier.weight(1f)
+                        )
+                        LoginFeatureTile(
+                            emoji = "🔄",
+                            accent = VuInfoCyan,
+                            title = "Auto Sync",
+                            modifier = Modifier.weight(1f)
+                        )
+                        LoginFeatureTile(
+                            emoji = "🛡️",
+                            accent = VuSuccessMint,
+                            title = "Privacy First",
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
 
-                Text(
-                    text = "Sessions are authenticated directly against https://vulms.vu.edu.pk via ASP.NET WebForms.",
-                    fontSize = 11.sp,
-                    textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    lineHeight = 15.sp
-                )
-
-                Spacer(modifier = Modifier.height(24.dp))
+                    OutlinedButton(
+                        onClick = {
+                            runCatching {
+                                context.startActivity(
+                                    Intent(
+                                        Intent.ACTION_VIEW,
+                                        Uri.parse("https://github.com/hanzlarehman404/vu-lms-reminder")
+                                    ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+                                )
+                            }
+                        },
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.dp, VuInfoCyan.copy(alpha = 0.48f)),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = LoginCardSurface.copy(alpha = 0.92f),
+                            contentColor = Color.White
+                        ),
+                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
+                        modifier = Modifier
+                            .heightIn(min = 48.dp)
+                            .testTag("open_source_github_link")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Code,
+                            contentDescription = null,
+                            tint = VuInfoCyan,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Open Source on GitHub",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White,
+                            maxLines = 1
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                            contentDescription = null,
+                            tint = VuInfoCyan,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun LoginFeatureTile(
+    emoji: String,
+    accent: Color,
+    title: String,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = LoginCardSurface.copy(alpha = 0.85f),
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.35f)),
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .background(accent.copy(alpha = 0.15f))
+                    .border(1.dp, accent.copy(alpha = 0.35f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = emoji,
+                    fontSize = 15.sp
+                )
+            }
+            Spacer(modifier = Modifier.height(7.dp))
+            Text(
+                text = title,
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                textAlign = TextAlign.Center
+            )
         }
     }
 }

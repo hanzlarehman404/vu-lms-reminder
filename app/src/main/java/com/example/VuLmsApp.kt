@@ -6,12 +6,18 @@ import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.example.data.remote.VuLmsNetworkService
+import com.example.receiver.RemoteNotificationScheduler
 import com.example.telemetry.TelemetryManager
 
 class VuLmsApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         TelemetryManager.scheduleCheckIn(this)
+        RemoteNotificationScheduler.scheduleNextBackgroundSync(
+            context = this,
+            delayMinutes = RemoteNotificationScheduler.REFRESH_INTERVAL_MINUTES,
+            replaceExisting = false
+        )
     }
 
     override fun newImageLoader(): ImageLoader {

@@ -5,48 +5,48 @@
 [![Target Platform](https://img.shields.io/badge/Platform-Android%207.0%2B%20(API%2024%2B)-00A65A.svg)](https://android.com)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-An open-source, privacy-first Android client and academic deadline companion designed exclusively for students of the **Virtual University of Pakistan (VU)**.
+An open-source, privacy-first Android client and academic deadline companion built exclusively for students of the **Virtual University of Pakistan (VU)** (currently **v2.0.0**).
 
-VU LMS Reminder connects directly to `vulms.vu.edu.pk` without any middleman servers, synchronizing activities, calculating strict submission cutoffs, parsing enrolled courses, academic records, and fee challans, while scheduling local Android alarms for assignments, quizzes, Graded Discussion Boards (GDBs), and exams.
+VU LMS Reminder connects directly to `vulms.vu.edu.pk` without any middleman servers—synchronizing assignments, quizzes, GDBs, and fee challans, calculating true submission cutoffs, caching your official Student E-Card PDF offline, and delivering reliable local alarms alongside live GitHub announcement notices.
 
 ---
 
 ## 📌 Table of Contents
 1. [Key Features](#-key-features)
-2. [Smart Due Date Calculation](#-smart-due-date-calculation-exclusive-cutoffs)
-3. [Notification & Routine Schema](#-three-tier-notification--alarm-schema)
-4. [Continuous Full-Screen Alarm & Reliability](#-continuous-full-screen-alarm--battery-reliability)
-5. [Fee Challans & Account Book](#-fee-challans--account-book)
-6. [Student Portal & Digital E-Card](#-student-portal--digital-e-card)
-7. [Developer Authenticity Verification](#-cryptographic-developer-verification)
-8. [Architecture & Network Security](#-architecture--network-security)
-9. [GitHub Actions Automated Build](#-github-actions-ci-build-workflow)
-10. [Building from Source](#-building-from-source)
-11. [Developer & Contributions](#-developer--contributions)
+2. [Smart Due Date Calculation & Pending Count](#-smart-due-date-calculation--pending-count)
+3. [Daily Routine Alarms & Notification Ringtones](#-daily-routine-alarms--notification-ringtones)
+4. [Live Announcements & Upcoming Notices](#-live-announcements--upcoming-notices)
+5. [Continuous Full-Screen Alarm & System Permissions](#-continuous-full-screen-alarm--system-permissions)
+6. [Fee Challans & Account Book](#-fee-challans--account-book)
+7. [Student Portal & Offline E-Card](#-student-portal--offline-e-card)
+8. [Developer Authenticity Verification](#-cryptographic-developer-verification)
+9. [Architecture & Network Security](#-architecture--network-security)
+10. [GitHub Actions CI Build Workflow](#-github-actions-ci-build-workflow)
+11. [Building from Source](#-building-from-source)
+12. [Developer, Issues & Contributions](#-developer-issues--contributions)
 
 ---
 
 ## 🌟 Key Features
 
-- **Direct VU LMS Integration**: Authenticates directly with the official VU ASP.NET WebForms portal (`https://vulms.vu.edu.pk/Default.aspx`).
-- **Atomic Fresh Sync (No Duplicates)**: Takes fresh data on every sync, atomically replacing older activities to eliminate duplicates and outdated states.
-- **Automatic LMS Completion Verification**: Scrapes the student's live ToDo list to automatically detect submitted assignments and completed quizzes.
-- **Activity Filter Badges**: Dashboard category tabs dynamically display live activity counts (e.g., `📋 All (6)`, `📝 Assignments (2)`, `⚡ Quizzes (3)`).
-- **Interactive Activity Timeline**: Visual start-to-end timeline showing course codes, titles, and exact submission deadlines.
-- **Fee Challans & Account Book**: Dedicated tab parsing all pending and paid semester fee challans directly from VU Account Book (`AccountBook.aspx`), keeping them separated from academic task deadlines.
-- **Student Academic Profile & Enrolled Courses**: Live view of CGPA, Effective CGPA, Credits Earned, Current Semester, and enrolled subjects parsed from `ProgressTimeline.aspx`.
-- **View & Download Official Student E-Card**: Download the student ID card PDF with native preview and Android share integration via secure `FileProvider`.
-- **Direct VU Quick Links**: One-tap access to **VU Support System** (`https://www.vu.edu.pk/SupportSystem/`) and **VU Webmail** (`https://gmail.vu.edu.pk/`).
-- **Continuous Looping Full-Screen Alarm**: Rings continuously until the student taps **"OK & Resync Now"**, which triggers a fresh sync and delivers a final confirmation notification.
-- **Developer Security Verification**: Real-time cryptographic signing certificate verification before sign-in to protect students from tampered builds.
-- **Zero Third-Party Data Collection**: Passwords and session cookies remain strictly on-device in Android private storage.
-- **Customizable Themes**: Seamless system, VU Light, and VU Dark themes.
+- **Direct VU LMS Integration**: Authenticates directly with the official VU ASP.NET WebForms portal (`https://vulms.vu.edu.pk/LMS_LP.aspx`) via a privacy-first login experience (**Encrypted**, **Auto Sync**, **Privacy First**) with **Auto-Sync on App Launch** and manual dashboard refresh.
+- **Personalized Dashboard & Live Countdown**: Greets the student by name (`Hi <Student Name>,`) directly above the **Nearest Deadline** countdown card.
+- **Atomic Fresh Sync & Pending Badge**: Every sync cleanly updates local Room storage with no duplicate records; the **Available Now** tab badge displays only currently pending tasks.
+- **Automatic LMS Completion Verification**: Scrapes your live ToDo list and paid challans so completed assignments, quizzes, and fees are marked automatically.
+- **Activity Category Filters & Timeline**: Filter tasks by type (`All`, `Assignment`, `Quiz`, `GDB`, `Exam`) with live counts and direct **Open on LMS** launch links.
+- **Custom VU + Bell Notification Icon & Audio Picker**: Displays a crisp monochrome **VU + Bell** status-bar icon across all notifications—tinted **App Info Cyan (`#36A3F7`)** for routine alerts and **VU Danger Red (`#F4516C`)** whenever deadlines are due today—alongside a system **Notification Ringtone** picker with inline **Preview / Stop**, **Reset to Default**, and silent vibration mode.
+- **Live Announcements & Moving Dashboard Banner**: Fetches updates from the dedicated `notifications` branch (`notifications.json`) for a persistent moving Dashboard banner, configurable daily popups, **What's Upcoming & Announcements**, and status-bar tray notifications via a 5-minute background `WorkManager` refresh.
+- **Live In-App GitHub Documentation**: Tapping **View Documentation & Details** in Settings fetches and renders the latest `README.md` straight from GitHub (with offline guide fallback).
+- **Fee Challans & IPG Card Payment Support**: Dedicated **Fees** tab tracking Paid and Unpaid challans, printable vouchers, 1Bill instructions, and an in-app **VU Card Payment (IPG)** checkout dialog with **Open in Browser** handoff.
+- **Student Profile & Offline Roll-Number E-Card**: Displays CGPA, Credits Earned, Enrolled Courses, and downloads a validated `%PDF-` E-Card saved permanently offline by roll number (`<ROLL_NO>.pdf`).
+- **Developer Security & Network Hardening**: Verifies APK signing certificate SHA-256 against `update.json` using dynamic app version metadata, enforces HTTPS-only TLS verification (`usesCleartextTraffic="false"`), and excludes stored credentials from Android cloud backup and device transfer.
+- **Customizable Themes**: Seamless **System**, **VU Light**, and **VU Dark** Material 3 themes.
 
 ---
 
-## ⏳ Smart Due Date Calculation (Exclusive Cutoffs)
+## ⏳ Smart Due Date Calculation & Pending Count
 
-In the raw VU LMS calendar feed (powered by FullCalendar JSON), activity end dates are specified **exclusively**:
+In the raw VU LMS calendar feed (FullCalendar JSON), activity end dates use **exclusive** boundaries:
 
 ```json
 {
@@ -56,128 +56,148 @@ In the raw VU LMS calendar feed (powered by FullCalendar JSON), activity end dat
 }
 ```
 
-- In FullCalendar specification, `"end": "2026,11,06"` marks `2026-11-06 00:00:00` as the exclusive cutoff.
-- The actual student deadline is **2026-11-05 at 23:59:59**. On November 6th, submission is closed.
-- **How VU LMS Reminder Solves This**: The app parses end dates by subtracting 1 day (`cal.add(Calendar.DAY_OF_MONTH, -1)`), accurately displaying `2026-11-05` and scheduling alerts so students submit before the portal shuts down.
-- **⚠️ Important Notice on VU LMS Submissions**: Due to a known quirk / minor bug in the VU LMS portal system, some course instructors or portal scripts occasionally accept submissions even after the posted due date has passed. **Always verify on the official VU LMS portal even after the due date**, as you might still have a window to submit your work!
+- `"end": "2026,11,06"` means submission closes at `2026-11-06 00:00:00`—the actual student deadline is **2026-11-05 at 23:59:59**.
+- VU LMS Reminder shifts exclusive cutoffs back by 1 day so deadlines and evening alarms fire accurately before the portal closes.
+- The **Available Now** segmented pill badge counts only active **pending** items so completed history never inflates your remaining workload.
+
+> ⚠️ **Browser Session Notice**: VU LMS permits only one active login session per student at a time. Whenever the app runs an automatic or manual LMS sync (including opening the app with **Auto-Sync on App Launch** enabled), your active VU LMS web browser session will be logged out.
 
 ---
 
-## 🔔 Three-Tier Notification & Alarm Schema
+## 🔔 Daily Routine Alarms & Notification Ringtones
 
-To keep students on top of their coursework without battery drain, the app operates three configurable daily routines via `AlarmManager`:
+The app coordinates three configurable daily routines via `AlarmManager`:
 
 | Routine | Default Time | Purpose | Action Buttons |
 | :--- | :--- | :--- | :--- |
-| **☀️ Morning Briefing** | `09:00 AM` | Auto-syncs LMS, verifies completed tasks, and delivers a summary of activities due today and tomorrow. | `Open LMS`, `Resync` |
-| **🌤️ Mid-Day Activity Check** | `02:00 PM` | Asks: *"Have you done all of your available activities?"* Prompts students halfway through the day. | `Open App`, `Resync` |
-| **🌙 Evening Last Reminder** | `09:00 PM` | Urgent check for any pending tasks due before midnight so no marks are lost. | `Open Activity`, `Resync`, `Snooze` |
+| **☀️ Morning Briefing** | `09:00 AM` | Auto-syncs LMS, verifies completed tasks, and summarizes activities due today and tomorrow. | `Open LMS`, `Resync` |
+| **🌤️ Mid-Day Activity Check** | `02:00 PM` | Reminds halfway through the day to finish available tasks. | `Open App`, `Resync` |
+| **🌙 Evening Last Reminder** | `09:00 PM` | Resyncs LMS and triggers urgent alerts for pending tasks due before midnight. | `Open Activity`, `Resync`, `Snooze` |
 
-> ⚠️ **Browser Session Notice**: Because VU LMS allows only one active web session per student, logging into the app during these sync times will invalidate active browser sessions. We recommend setting sync times when you are not actively taking timed tests in your browser.
+### Custom VU + Bell Icon & Visual Tinting
+- **Monochrome Status Bar Icon**: All notifications (deadlines, urgent alarms, morning briefings, mid-day checks, sync confirmations, and remote announcements) use a dedicated `24dp` monochrome `#FFFFFF` **VU + Bell** vector icon (`ic_notification_vu_bell`).
+- **Dynamic Shade Tinting**:
+  - **App Info Cyan (`#36A3F7`)**: Default accent for upcoming multi-day reminders, routine briefings with nothing due today, sync confirmations, and announcements.
+  - **VU Danger Red (`#F4516C`)**: Automatically highlights any notification involving deadlines due today (`todayDueCount > 0`, `< 24h` remaining, due-today calendar date, or urgent alarms).
+
+### Notification Audio & Ringtone Control
+- **Enable Notifications**: Master switch for all scheduled briefings, reminders, and urgent alerts.
+- **Full-Screen Evening Alarm**: Toggle between the waking full-screen alarm overlay and a regular heads-up shade notification.
+- **Mute Notifications & Alarms**: Instantly silences notification channels and alarm audio while keeping vibration available.
+- **Notification Ringtone**: Tap directly to choose any Android sound via the system ringtone picker (`RingtoneManager`), with inline **Preview / Stop** and **Reset to Default** actions. Notification channels rotate cleanly on Android 8.0+ so sound changes take effect immediately.
 
 ---
 
-## 🚨 Continuous Full-Screen Alarm & Battery Reliability
+## 📣 Live Announcements & Upcoming Notices
 
-The app provides an intensive, non-ignorable alert system for high-stakes deadlines:
+Announcements, upcoming feature previews, and urgent notices are driven remotely from [`notifications.json`](https://github.com/hanzlarehman404/vu-lms-reminder/blob/notifications/notifications.json) on the `notifications` branch (documented in `NOTIFICATIONS_GUIDE.md`):
 
-- **Continuous Looping Alarm**:
-  Unlike simple short chime notifications, `UrgentAlarmActivity` utilizes Android's `MediaPlayer` on the `AudioAttributes.USAGE_ALARM` audio stream paired with a repeating hardware vibration waveform. It loops continuously until the student taps **"OK & Resync Now"**.
-- **Post-Alarm Resync & Confirmation**:
-  Tapping "OK & Resync Now" triggers a background synchronization with VU LMS. Once updated, the app issues a final confirmation notification confirming that your activities are up to date.
-- **Full-Screen Alarm Setting**:
-  Configurable under **"Full-Screen Alarm at Evening Last Reminder"** in Settings. If turned OFF, the app delivers a regular heads-up notification in the notification shade without hijacking the screen.
-- **Background Reliability Helpers**:
-  A dedicated settings card helps students whitelist the app from aggressive manufacturer battery optimizations (`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`) and grant Exact Alarm scheduling permissions (`SCHEDULE_EXACT_ALARM`) on Android 12+.
+- **Foreground & 5-Minute Sync**: Refreshes whenever the app returns to the foreground, every 5 minutes while open, and via a 5-minute background `WorkManager` job when notification-bar alerts are configured.
+- **Moving Dashboard Banner**: Displays active persistent notices across the top of the Home screen; tapping opens full announcement details.
+- **Controlled Popups & Status Bar Alerts**: Supports `once_per_day`, `once_per_id`, `interval` (with configurable cooldown minutes), and `always` rules plus start/expiry dates and app version targeting.
+- **What's Upcoming & Announcements**: Available in Settings right above **Check for Updates** to inspect notices manually anytime.
+
+---
+
+## 🚨 Continuous Full-Screen Alarm & System Permissions
+
+- **Looping Alarm Ringtone**: `UrgentAlarmActivity` plays the device's default **Alarm** ringtone (`AudioAttributes.USAGE_ALARM`) with repeating vibration until dismissed, snoozed, or resolved via **OK & Resync Now**.
+- **System Permissions & Reliability**: Settings provides scannable status rows (`Allowed` / `Allow`) with direct Android system shortcuts for:
+  - **Battery Optimization** (Unrestricted background run)
+  - **Auto-Run / Background Launch** (OEM startup managers)
+  - **Exact Alarm Scheduling** (`SCHEDULE_EXACT_ALARM` on Android 12+)
+  - **Full-Screen Lock-Screen Alarm** (`USE_FULL_SCREEN_INTENT` on Android 14+)
 
 ---
 
 ## 💳 Fee Challans & Account Book
 
-A dedicated **Fees** tab (`AccountBookScreen`) isolates financial records from academic milestones:
+A dedicated **Fees** tab (`AccountBookScreen`) keeps financial items separate from academic coursework:
 
-- Automatically fetches and parses all challans from `https://vulms.vu.edu.pk/AccountBook/AccountBook.aspx`.
-- Displays Challan ID, Description/Semester, Issue Date, Due Date, Total Payable Amount, and Paid Date.
-- Filters between **All**, **Unpaid / Pending**, and **Paid** challans.
-- Fee items in the raw calendar feed are automatically filtered out so your academic dashboard stays clutter-free.
+- Parses all challans from `https://vulms.vu.edu.pk/AccountBook/AccountBook.aspx`.
+- Shows Challan ID, Challan Type, Payable/Paid Amount, Due Date, and Paid Date with **All / Unpaid / Paid** filters.
+- Supports Challan Print Preview, **1Bill** voucher checkout, and an in-app **VU Card Payment (IPG)** WebView dialog featuring:
+  - Compact two-row header displaying the **Challan #** and **PKR** amount cleanly without layout wrapping.
+  - Direct **Open in Browser** action to continue bank checkout in the device browser.
+  - Strict WebView SSL certificate validation (`handler.cancel()` on TLS errors) and graceful Chromium renderer crash/close lifecycle handling (`onRenderProcessGone` recovery & safe WebView disposal).
 
 ---
 
-## 🆔 Student Portal & Digital E-Card
+## 🆔 Student Portal & Offline E-Card
 
-A dedicated **Student** tab (`StudentPortalScreen`) displays a virtual student dashboard:
+The **Student** tab (`StudentPortalScreen`) displays:
 
-- **Student Academic Profile**: Displays Student ID, Name, Study Program, CGPA, Effective CGPA, Credits Earned, and Current Semester parsed from `CourseSelectionClosed.aspx`.
-- **Current Enrolled Subjects**: Live list of active semester courses parsed from `ProgressTimeline.aspx`.
-- **Official E-Card PDF**: Directly downloads the student's digital E-Card PDF from `PrintStudentECard.aspx` using session credentials. Offers native PDF viewing and sharing via `FileProvider`.
-- **Direct VU Quick Links**: Direct links to **VU Support System** (`https://www.vu.edu.pk/SupportSystem/`) and **VU Webmail** (`https://gmail.vu.edu.pk/`).
+- **Student Academic Profile**: Student ID, Name, Study Program, CGPA, Effective CGPA, Credits Earned, and Current Semester (`CourseSelectionClosed.aspx`).
+- **Current Enrolled Subjects**: Active semester course cards (`ProgressTimeline.aspx`).
+- **Permanent Offline Student E-Card PDF**: Fetches from `PrintStudentECard.aspx`, verifies the `%PDF-` header to reject corrupted HTML login pages, automatically purges invalid caches, and saves permanently on-device by roll number (`<ROLL_NO>.pdf`) for instant offline viewing and sharing via `FileProvider`.
+- **Direct VU Quick Links**: One-tap links to **VU Support System** and **VU Webmail**.
 
 ---
 
 ## 🛡️ Cryptographic Developer Verification
 
-To protect VU students against credential-stealing clones or modified APKs:
+To guard against tampered third-party builds:
 
-1. When clicking **"Verify & Sign In"**, the app queries `https://raw.githubusercontent.com/hanzlarehman404/vu-lms-reminder/main/update.json`.
-2. It extracts the installed APK's cryptographic signing certificate using Android `PackageManager`.
-3. It compares the SHA-256 fingerprint against the official developer key:
+1. Tapping **"Verify & Sign In"** (or **Check for Updates**) fetches `https://raw.githubusercontent.com/hanzlarehman404/vu-lms-reminder/default/update.json`.
+2. Compares the installed APK's signing certificate SHA-256 fingerprint via `PackageManager` against the official key:
    ```
    27:AD:82:EF:6C:AA:E3:B7:0D:2C:A3:D9:F8:45:E2:9B:AA:04:C0:A4:5D:2A:EE:F7:AC:ED:64:24:6B:0F:99:74
    ```
-4. **Verified**: Displays developer name (*Hanzla Rehman*), release version, and allows one-tap sign in.
-5. **Tampered / Unmatched**: Warns the student immediately and directs them to the official GitHub repository to download a genuine APK.
+3. Displays live verification status (`BuildConfig.VERSION_NAME`), changelog notes, and release metadata before allowing login or directing users to official GitHub releases if mismatched.
 
 ---
 
 ## 🏗️ Architecture & Network Security
 
 ```
-Android App (Jetpack Compose M3)
+Android App (Jetpack Compose Material 3)
       │
-      ├── ViewModel (StateFlow)
-      │     └── Repository
-      │           ├── Room SQLite DB (Atomic Refresh, Offline Cache)
-      │           └── VuLmsNetworkService (OkHttp + Custom SSL)
-      │                     │
-      │                     ├── [TLS] Direct Connection ──► https://vulms.vu.edu.pk
-      │                     │                                 ├── Calendar JSON
-      │                     │                                 ├── AccountBook.aspx
-      │                     │                                 ├── ProgressTimeline.aspx
-      │                     │                                 ├── CourseSelectionClosed.aspx
-      │                     │                                 └── PrintStudentECard.aspx
-      │                     │
-      │                     └── [TLS] GitHub Release API ──► update.json & APKs
+      ├── ViewModel (StateFlow / Lifecycle-aware)
+      │     └── VuLmsRepository
+      │           ├── Room SQLite DB + PreferencesManager (Backup-Excluded Credentials)
+      │           └── VuLmsNetworkService (OkHttp + Standard System TLS Verification)
+      │                     ├── [HTTPS] https://vulms.vu.edu.pk
+      │                     │     ├── ActivityCalendar / ToDo JSON
+      │                     │     ├── AccountBook.aspx & IPG Payment WebView (Strict SSL)
+      │                     │     ├── ProgressTimeline.aspx
+      │                     │     ├── CourseSelectionClosed.aspx
+      │                     │     └── PrintStudentECard.aspx (Validated PDF)
+      │                     └── [HTTPS] GitHub Raw Feeds
+      │                           ├── default/update.json & default/README.md
+      │                           └── notifications/notifications.json
       │
-      └── Background Layer
-            ├── AlarmManager (RTC_WAKEUP, exact alarm compat)
-            ├── AlarmBroadcastReceiver
-            └── NotificationHelper / UrgentAlarmActivity (Looping Audio)
+      └── Background & Alert Layer
+            ├── AlarmManager (Morning, Mid-Day, Evening exact alarms)
+            ├── WorkManager (5-minute RemoteNotificationSyncWorker)
+            └── NotificationHelper (VU + Bell Icon, Dynamic Channels) + UrgentAlarmActivity
 ```
 
-### Android SSL Certificate Trust Anchor Resolution
-The VU LMS server (`vulms.vu.edu.pk`) serves an intermediate/root certificate chain that Android's default trust store does not recognize. The app uses an SSL socket factory with permissive verification specifically scoped for `vulms.vu.edu.pk` to ensure smooth connection on all Android devices.
+### Transport & Local Credential Hardening
+- **HTTPS-Only Network Policy**: `android:usesCleartextTraffic="false"` is enforced globally in `AndroidManifest.xml`.
+- **Standard TLS & Hostname Verification**: `VuLmsNetworkService` relies exclusively on Android/OkHttp default certificate chain and hostname verification (no trust-all bypasses), and the in-app Card Payment WebView cancels invalid TLS handshakes via `handler.cancel()`.
+- **Backup & Transfer Exclusion**: Credential-containing preferences (`vu_lms_app_prefs.xml`) are excluded from Android cloud backups (`backup_rules.xml`) and device-to-device transfers (`data_extraction_rules.xml`).
 
 ---
 
 ## 🚀 GitHub Actions CI Build Workflow
 
-The repository includes an automated workflow at `.github/workflows/build_apk.yaml` that compiles, signs, and packages the production APK:
+Automated builds are defined in `.github/workflows/build_apk.yaml`:
 
-- **Trigger**: Pushes to `main`, tags (`v*`), or manual workflow dispatch.
-- **Environment**: Ubuntu Latest with JDK 17 & Android SDK 36.
-- **Signing**: Uses GitHub Secrets (`KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`).
-- **Artifact**: Uploads `vu-lms-reminder-v2.0.0.apk` ready for installation.
+- **Trigger**: Pushes and pull requests to `dev`, or manual `workflow_dispatch`.
+- **Environment**: Ubuntu Latest with **JDK 21 (Temurin)** & **Android SDK 36**.
+- **Output**: Builds, renames, uploads `vu-lms-reminder-app-v2.0.0.apk`, and updates the `v2.0.0` GitHub Release asset.
+- **Version Releases**: See [`update.md`](update.md) for the step-by-step release checklist across `app/build.gradle.kts` (`versionCode` / `versionName`), `.github/workflows/build_apk.yaml`, and `update.json`.
 
 ---
 
 ## 💻 Building from Source
 
 ### Prerequisites
-- Android Studio Ladybug (2024.2.1+) or newer
-- JDK 17
-- Android SDK Platform 36
+- Android Studio Ladybug / Meerkat or newer
+- **JDK 21**
+- Android SDK Platform **36** (minSdk **24**)
 
-### Build Steps
+### Build & Test Commands
 ```bash
 # Clone the repository
 git clone https://github.com/hanzlarehman404/vu-lms-reminder.git
@@ -186,21 +206,21 @@ cd vu-lms-reminder
 # Build debug APK
 gradle assembleDebug
 
-# Run unit and Robolectric tests
+# Run local unit & Robolectric Compose UI tests
 gradle :app:testDebugUnitTest
 ```
 
-The compiled APK will be located at:
-`app/build/outputs/apk/debug/app-debug.apk`
+The debug APK outputs to `app/build/outputs/apk/debug/app-debug.apk`.
 
 ---
 
-## 👨‍💻 Developer & Contributions
+## 👨‍💻 Developer, Issues & Contributions
 
 - **Lead Developer**: [Hanzla Rehman](https://github.com/hanzlarehman404)
 - **Repository**: [github.com/hanzlarehman404/vu-lms-reminder](https://github.com/hanzlarehman404/vu-lms-reminder)
+- **Report a Bug or Issue**: [GitHub Issues](https://github.com/hanzlarehman404/vu-lms-reminder/issues)
 
-Contributions, feature requests, and bug reports are warmly welcome! If you find this app helpful, please consider starring ⭐ the repository.
+Contributions, bug reports, and feature suggestions are warmly welcome! You can also report bugs directly from **Settings → Developer & Support → Report an Issue**.
 
 ---
 *Disclaimer: This is an independent, open-source student utility and is not officially affiliated with or endorsed by the Virtual University of Pakistan.*

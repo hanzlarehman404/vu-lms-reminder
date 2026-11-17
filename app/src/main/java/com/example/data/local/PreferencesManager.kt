@@ -53,6 +53,10 @@ class PreferencesManager(context: Context) {
     fun isAlarmSoundEnabled(): Boolean = prefs.getBoolean(KEY_ALARM_SOUND, true)
     fun isVibrationEnabled(): Boolean = prefs.getBoolean(KEY_VIBRATION, true)
     fun getNotificationRingtone(): String = prefs.getString(KEY_NOTIFICATION_RINGTONE, "alarm") ?: "alarm"
+    fun getNotificationToneUri(): String = prefs.getString(KEY_NOTIFICATION_TONE_URI, "").orEmpty()
+    fun getNotificationToneName(): String =
+        prefs.getString(KEY_NOTIFICATION_TONE_NAME, DEFAULT_NOTIFICATION_TONE_NAME)
+            ?: DEFAULT_NOTIFICATION_TONE_NAME
     fun getAppTheme(): String = prefs.getString(KEY_APP_THEME, "system") ?: "system"
 
     fun isAutoSyncOnLaunch(): Boolean = prefs.getBoolean(KEY_AUTO_SYNC_ON_LAUNCH, true)
@@ -219,6 +223,29 @@ class PreferencesManager(context: Context) {
         prefs.edit().putString(KEY_NOTIFICATION_RINGTONE, ringtone).apply()
     }
 
+    fun setNotificationTone(uri: String, displayName: String) {
+        val cleanUri = uri.trim()
+        val cleanName = displayName.trim().ifEmpty { DEFAULT_NOTIFICATION_TONE_NAME }
+        prefs.edit()
+            .putString(KEY_NOTIFICATION_TONE_URI, cleanUri)
+            .putString(KEY_NOTIFICATION_TONE_NAME, cleanName)
+            .apply()
+    }
+
+    fun resetNotificationTone() {
+        prefs.edit()
+            .remove(KEY_NOTIFICATION_TONE_URI)
+            .putString(KEY_NOTIFICATION_TONE_NAME, DEFAULT_NOTIFICATION_TONE_NAME)
+            .apply()
+    }
+
+    fun resolveNotificationChannelKey(): String {
+        if (!isAlarmSoundEnabled()) return "silent"
+        val customUri = getNotificationToneUri()
+        if (customUri.isBlank()) return "default"
+        return customUri.hashCode().toUInt().toString(16)
+    }
+
     fun setNotificationSettings(
         enabled: Boolean,
         urgentAlarm: Boolean,
@@ -281,6 +308,56 @@ class PreferencesManager(context: Context) {
         return lastDay != todayDay
     }
 
+    fun getNotificationBarLastShownTimestamp(notificationId: String): Long {
+        if (notificationId.isBlank()) return 0L
+        val raw = prefs.getString(KEY_NOTIFICATION_BAR_SHOWN_MAP, "").orEmpty()
+        if (raw.isEmpty()) return 0L
+        return try {
+            val obj = org.json.JSONObject(raw)
+            obj.optLong(notificationId, 0L)
+        } catch (_: Exception) {
+            0L
+        }
+    }
+
+    fun markNotificationBarShown(notificationId: String, timestampMs: Long = System.currentTimeMillis()) {
+        if (notificationId.isBlank()) return
+        val raw = prefs.getString(KEY_NOTIFICATION_BAR_SHOWN_MAP, "").orEmpty()
+        val obj = try {
+            if (raw.isNotEmpty()) org.json.JSONObject(raw) else org.json.JSONObject()
+        } catch (_: Exception) {
+            org.json.JSONObject()
+        }
+        obj.put(notificationId, timestampMs)
+        prefs.edit().putString(KEY_NOTIFICATION_BAR_SHOWN_MAP, obj.toString()).commit()
+    }
+
+    fun canShowNotificationBar(
+        item: RemoteNotificationItem,
+        nowMillis: Long = System.currentTimeMillis()
+    ): Boolean {
+        if (!isNotificationsEnabled()) return false
+        if (!item.showNotificationBar || item.id.isBlank()) return false
+        if (item.notificationBarFrequency.equals(RemoteNotificationItem.BAR_FREQUENCY_ALWAYS, ignoreCase = true)) {
+            return true
+        }
+        val lastShown = getNotificationBarLastShownTimestamp(item.id)
+        if (lastShown <= 0L) return true
+        return when (item.notificationBarFrequency.lowercase(java.util.Locale.US)) {
+            RemoteNotificationItem.BAR_FREQUENCY_ONCE_PER_DAY -> {
+                val lastDay = RemoteNotificationSchedule.localCalendarDayKey(lastShown)
+                val todayDay = RemoteNotificationSchedule.localCalendarDayKey(nowMillis)
+                lastDay != todayDay
+            }
+            RemoteNotificationItem.BAR_FREQUENCY_INTERVAL -> {
+                val cooldownMs = item.notificationBarCooldownMinutes.coerceAtLeast(1) * 60_000L
+                (nowMillis - lastShown) >= cooldownMs
+            }
+            RemoteNotificationItem.BAR_FREQUENCY_ONCE_PER_ID -> false
+            else -> false
+        }
+    }
+
     companion object {
         private const val KEY_STUDENT_ID = "student_id"
         private const val KEY_PASSWORD = "student_password"
@@ -299,9 +376,13 @@ class PreferencesManager(context: Context) {
         private const val KEY_ALARM_SOUND = "alarm_sound_enabled"
         private const val KEY_VIBRATION = "alarm_vibrate_enabled"
         private const val KEY_NOTIFICATION_RINGTONE = "notification_ringtone_type"
+        private const val KEY_NOTIFICATION_TONE_URI = "notification_tone_uri"
+        private const val KEY_NOTIFICATION_TONE_NAME = "notification_tone_name"
+        const val DEFAULT_NOTIFICATION_TONE_NAME = "System Default Notification"
         private const val KEY_APP_THEME = "app_theme_mode" // "system", "light", "dark"
         private const val KEY_AUTO_SYNC_ON_LAUNCH = "auto_sync_on_launch"
         private const val KEY_HAS_PROMPTED_AUTO_SYNC = "has_prompted_auto_sync"
         private const val KEY_NOTIFICATION_POPUP_SHOWN_MAP = "remote_notification_popup_shown_map"
+        private const val KEY_NOTIFICATION_BAR_SHOWN_MAP = "remote_notification_bar_shown_map"
     }
 }

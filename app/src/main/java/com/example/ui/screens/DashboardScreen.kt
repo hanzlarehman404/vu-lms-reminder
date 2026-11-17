@@ -59,6 +59,7 @@ fun DashboardScreen(
     showUpcomingOnly: Boolean,
     searchQuery: String,
     studentId: String,
+    studentName: String = "",
     lastSyncTime: Long,
     isSyncing: Boolean,
     syncMessage: String?,
@@ -283,6 +284,42 @@ fun DashboardScreen(
                 contentPadding = PaddingValues(14.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+            item {
+                val formattedStudentName = remember(studentName) {
+                    val trimmed = studentName.trim()
+                    if (trimmed.isEmpty()) {
+                        "Student"
+                    } else {
+                        trimmed.split(Regex("\\s+"))
+                            .filter { it.isNotEmpty() }
+                            .joinToString(" ") { part ->
+                                part.lowercase(Locale.getDefault())
+                                    .replaceFirstChar { ch ->
+                                        if (ch.isLowerCase()) ch.titlecase(Locale.getDefault()) else ch.toString()
+                                    }
+                            }
+                    }
+                }
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 2.dp, vertical = 2.dp)
+                        .testTag("dashboard_greeting_header")
+                ) {
+                    Text(
+                        text = "Hi $formattedStudentName,",
+                        fontSize = 19.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Have a look at your activities and upcoming deadlines.",
+                        fontSize = 12.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
 
             // Hero Countdown Timer for nearest deadline (from available tasks)
             if (!showUpcomingOnly) {
@@ -334,7 +371,7 @@ fun DashboardScreen(
                                 color = if (isAvailableTab) VuInfoCyan.copy(alpha = 0.15f) else Color.Transparent
                             ) {
                                 Text(
-                                    text = "${stats.availableCount}",
+                                    text = "${stats.totalPending}",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (isAvailableTab) VuInfoCyan else MaterialTheme.colorScheme.onSurfaceVariant,

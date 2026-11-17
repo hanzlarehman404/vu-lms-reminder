@@ -36,7 +36,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import com.example.receiver.RemoteNotificationScheduler
 import com.example.ui.components.AnnouncementPopupDialog
 import com.example.ui.components.UpdateDialog
 import com.example.ui.screens.AccountBookScreen
@@ -47,6 +52,7 @@ import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.StudentPortalScreen
 import com.example.ui.theme.VuLmsTheme
 import com.example.ui.viewmodel.MainViewModel
+import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
@@ -65,6 +71,7 @@ class MainActivity : ComponentActivity() {
 
             VuLmsTheme(darkTheme = isDark) {
                 val context = LocalContext.current
+                val lifecycleOwner = LocalLifecycleOwner.current
                 val isLoggedIn by viewModel.isLoggedIn.collectAsStateWithLifecycle()
                 val isPrivacyAccepted by viewModel.isPrivacyAccepted.collectAsStateWithLifecycle()
                 val loginState by viewModel.loginState.collectAsStateWithLifecycle()
@@ -76,6 +83,27 @@ class MainActivity : ComponentActivity() {
                 val activePopupNotification by viewModel.activePopupNotification.collectAsStateWithLifecycle()
                 val isCheckingNotifications by viewModel.isCheckingNotifications.collectAsStateWithLifecycle()
                 val manualNotificationsState by viewModel.manualNotificationsState.collectAsStateWithLifecycle()
+
+                // Refresh notifications whenever the user opens or returns to the app
+                DisposableEffect(lifecycleOwner) {
+                    val observer = LifecycleEventObserver { _, event ->
+                        if (event == Lifecycle.Event.ON_START) {
+                            viewModel.fetchRemoteNotifications(isManual = false)
+                        }
+                    }
+                    lifecycleOwner.lifecycle.addObserver(observer)
+                    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+                }
+
+                // Keep notifications fresh every 5 minutes while app stays open in foreground
+                LaunchedEffect(lifecycleOwner) {
+                    lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                        while (true) {
+                            delay(RemoteNotificationScheduler.REFRESH_INTERVAL_MS)
+                            viewModel.fetchRemoteNotifications(isManual = false)
+                        }
+                    }
+                }
 
                 // Check for In-App Update dialog
                 updateInfo?.let { info ->
@@ -273,6 +301,7 @@ class MainActivity : ComponentActivity() {
                                     showUpcomingOnly = showUpcomingOnly,
                                     searchQuery = searchQuery,
                                     studentId = studentId,
+                                    studentName = studentProfile.studentName,
                                     lastSyncTime = lastSyncTime,
                                     isSyncing = isSyncing,
                                     syncMessage = syncMessage,

@@ -15,6 +15,7 @@ import com.example.data.model.ChallanEntity
 import com.example.data.model.EnrolledSubject
 import com.example.data.model.RemoteNotificationItem
 import com.example.data.model.StudentProfile
+import com.example.receiver.RemoteNotificationScheduler
 import com.example.ui.components.ManualNotificationsUiState
 import java.io.File
 
@@ -117,6 +118,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _manualNotificationsState = MutableStateFlow<ManualNotificationsUiState?>(null)
     val manualNotificationsState: StateFlow<ManualNotificationsUiState?> = _manualNotificationsState.asStateFlow()
+
+    @Volatile
+    private var isAutoFetchingNotifications = false
+    @Volatile
+    private var lastAutoNotificationFetchMs = 0L
 
     private val _studentAvatarFile = MutableStateFlow<File?>(repository.getProfileAvatarFile())
     val studentAvatarFile: StateFlow<File?> = _studentAvatarFile.asStateFlow()
@@ -255,8 +261,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val res = repository.downloadStudentECard()
             _isDownloadingECard.value = false
             if (res.isSuccess) {
-                _studentECardFile.value = res.getOrNull()
-                _eCardMessage.value = "E-Card downloaded successfully!"
+                val savedFile = res.getOrNull()
+                _studentECardFile.value = savedFile
+                val label = savedFile?.name ?: "E-Card PDF"
+                _eCardMessage.value = "E-Card saved offline ($label)"
             } else {
                 val err = res.exceptionOrNull()?.localizedMessage ?: "Download failed"
                 _eCardMessage.value = "Failed to download E-Card: $err"
@@ -444,39 +452,60 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun fetchRemoteNotifications(isManual: Boolean = false) {
+        if (!isManual) {
+            val nowCall = System.currentTimeMillis()
+            if (isAutoFetchingNotifications || (nowCall - lastAutoNotificationFetchMs) < 2_000L) {
+                return
+            }
+            isAutoFetchingNotifications = true
+            lastAutoNotificationFetchMs = nowCall
+        }
+
         viewModelScope.launch {
             if (isManual) {
                 _isCheckingNotifications.value = true
                 _manualNotificationsState.value = null
             }
-            val result = repository.fetchRemoteNotifications()
-            if (isManual) {
-                _isCheckingNotifications.value = false
-            }
-            if (result.isSuccess) {
-                val now = System.currentTimeMillis()
-                val versionCode = BuildConfig.VERSION_CODE
-                val eligible = result.getOrNull().orEmpty()
-                    .filter { it.isCurrentlyEligible(nowMillis = now, currentVersionCode = versionCode) }
-                    .sortedByDescending { it.priority }
+            try {
+                val result = repository.fetchRemoteNotifications()
+                if (result.isSuccess) {
+                    val now = System.currentTimeMillis()
+                    val versionCode = BuildConfig.VERSION_CODE
+                    val eligible = result.getOrNull().orEmpty()
+                        .filter { it.isCurrentlyEligible(nowMillis = now, currentVersionCode = versionCode) }
+                        .sortedByDescending { it.priority }
 
-                _allUpcomingNotifications.value = eligible
-                _activeBannerNotifications.value = eligible.filter { it.showBanner }
+                    _allUpcomingNotifications.value = eligible
+                    _activeBannerNotifications.value = eligible.filter { it.showBanner }
 
-                val popupCandidate = eligible.firstOrNull { item ->
-                    item.showPopup && prefs.canShowNotificationPopup(item, nowMillis = now)
+                    RemoteNotificationScheduler.dispatchSystemNotificationsIfEligible(
+                        context = getApplication(),
+                        eligibleItems = eligible,
+                        prefs = prefs,
+                        nowMillis = now
+                    )
+
+                    val popupCandidate = eligible.firstOrNull { item ->
+                        item.showPopup && prefs.canShowNotificationPopup(item, nowMillis = now)
+                    }
+                    if (popupCandidate != null && !isManual) {
+                        _activePopupNotification.value = popupCandidate
+                    }
+
+                    if (isManual) {
+                        _manualNotificationsState.value = ManualNotificationsUiState.Loaded(eligible)
+                    }
+                } else if (isManual) {
+                    _manualNotificationsState.value = ManualNotificationsUiState.Error(
+                        "Unable to reach GitHub right now. Please check your internet connection and try again."
+                    )
                 }
-                if (popupCandidate != null && !isManual) {
-                    _activePopupNotification.value = popupCandidate
-                }
-
+            } finally {
                 if (isManual) {
-                    _manualNotificationsState.value = ManualNotificationsUiState.Loaded(eligible)
+                    _isCheckingNotifications.value = false
+                } else {
+                    isAutoFetchingNotifications = false
                 }
-            } else if (isManual) {
-                _manualNotificationsState.value = ManualNotificationsUiState.Error(
-                    "Unable to reach GitHub right now. Please check your internet connection and try again."
-                )
             }
         }
     }

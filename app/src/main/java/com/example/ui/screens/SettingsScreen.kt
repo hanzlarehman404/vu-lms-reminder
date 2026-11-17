@@ -1,15 +1,19 @@
 package com.example.ui.screens
 
+import android.app.Activity
 import android.app.AlarmManager
 import android.app.NotificationManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,6 +21,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.core.content.IntentCompat
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
@@ -26,12 +31,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -40,6 +47,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImage
 import com.example.R
 import com.example.data.local.PreferencesManager
+import com.example.receiver.NotificationHelper
 import com.example.ui.components.AppDocsDialog
 import com.example.ui.components.ManualNotificationsUiState
 import com.example.ui.components.PrivacyDisclaimerDialog
@@ -48,6 +56,91 @@ import com.example.ui.theme.*
 import com.example.ui.viewmodel.ManualUpdateResult
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+@Composable
+private fun PermissionStatusRow(
+    icon: ImageVector,
+    iconTint: Color,
+    title: String,
+    subtitle: String,
+    statusLabel: String,
+    isGranted: Boolean,
+    testTagValue: String,
+    onClick: () -> Unit
+) {
+    val badgeBg = if (isGranted) VuGreenPrimary.copy(alpha = 0.14f) else iconTint.copy(alpha = 0.14f)
+    val badgeText = if (isGranted) VuGreenPrimary else iconTint
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        border = androidx.compose.foundation.BorderStroke(
+            width = 1.dp,
+            color = if (isGranted) VuGreenPrimary.copy(alpha = 0.35f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .testTag(testTagValue)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(badgeBg, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (isGranted) Icons.Default.CheckCircle else icon,
+                    contentDescription = null,
+                    tint = badgeText,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = subtitle,
+                    fontSize = 11.sp,
+                    lineHeight = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = badgeBg
+            ) {
+                Text(
+                    text = statusLabel,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = badgeText,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(2.dp))
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -82,11 +175,12 @@ fun SettingsScreen(
     var morningTime by remember { mutableStateOf(prefs.getMorningSyncTime()) }
     var middayTime by remember { mutableStateOf(prefs.getMiddayTime()) }
     var eveningTime by remember { mutableStateOf(prefs.getEveningReminderTime()) }
-    var notificationRingtone by remember { mutableStateOf(prefs.getNotificationRingtone()) }
+    var notificationToneUri by remember { mutableStateOf(prefs.getNotificationToneUri()) }
+    var notificationToneName by remember { mutableStateOf(prefs.getNotificationToneName()) }
+    var autoSyncOnLaunch by remember { mutableStateOf(prefs.isAutoSyncOnLaunch()) }
     var selectedTheme by remember { mutableStateOf(prefs.getAppTheme()) }
 
     var activeRingtone by remember { mutableStateOf<android.media.Ringtone?>(null) }
-    var activeToneGenerator by remember { mutableStateOf<android.media.ToneGenerator?>(null) }
     var isPlayingPreview by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
     var previewJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
@@ -112,61 +206,110 @@ fun SettingsScreen(
             previewJob?.cancel()
             previewJob = null
             activeRingtone?.stop()
-            activeToneGenerator?.release()
-            activeToneGenerator = null
+            activeRingtone = null
             isPlayingPreview = false
         } catch (ignored: Exception) {}
     }
 
-    fun playTonePreview(toneKey: String) {
+    fun playTonePreview(toneUriStr: String) {
         try {
             stopAudioPreview()
-            when (toneKey) {
-                "alarm" -> {
-                    val uri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM)
-                        ?: android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
-                    val rt = android.media.RingtoneManager.getRingtone(context, uri)
-                    if (rt != null) {
-                        activeRingtone = rt
-                        isPlayingPreview = true
-                        rt.play()
-                        previewJob = coroutineScope.launch {
-                            kotlinx.coroutines.delay(2500)
-                            try { rt.stop() } catch (ignored: Exception) {}
-                            isPlayingPreview = false
-                        }
+            val targetUri = if (toneUriStr.isNotBlank()) {
+                runCatching { Uri.parse(toneUriStr) }.getOrNull()
+                    ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            } else {
+                RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                    ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+            } ?: return
+
+            val rt = RingtoneManager.getRingtone(context, targetUri)
+            if (rt != null) {
+                activeRingtone = rt
+                isPlayingPreview = true
+                rt.play()
+                previewJob = coroutineScope.launch {
+                    delay(2800)
+                    try {
+                        rt.stop()
+                    } catch (_: Exception) {
                     }
-                }
-                "chime" -> {
-                    val tg = android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 85)
-                    activeToneGenerator = tg
-                    isPlayingPreview = true
-                    tg.startTone(android.media.ToneGenerator.TONE_PROP_PROMPT, 600)
-                    previewJob = coroutineScope.launch {
-                        kotlinx.coroutines.delay(1000)
-                        try { tg.release() } catch (ignored: Exception) {}
-                        activeToneGenerator = null
-                        isPlayingPreview = false
-                    }
-                }
-                else -> {
-                    val uri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
-                    val rt = android.media.RingtoneManager.getRingtone(context, uri)
-                    if (rt != null) {
-                        activeRingtone = rt
-                        isPlayingPreview = true
-                        rt.play()
-                        previewJob = coroutineScope.launch {
-                            kotlinx.coroutines.delay(2500)
-                            try { rt.stop() } catch (ignored: Exception) {}
-                            isPlayingPreview = false
-                        }
-                    }
+                    activeRingtone = null
+                    isPlayingPreview = false
                 }
             }
-        } catch (ignored: Exception) {
+        } catch (_: Exception) {
             isPlayingPreview = false
         }
+    }
+
+    fun applySelectedNotificationTone(uriStr: String, displayName: String, playPreview: Boolean = true) {
+        notificationToneUri = uriStr
+        notificationToneName = displayName
+        if (uriStr.isBlank()) {
+            prefs.resetNotificationTone()
+        } else {
+            prefs.setNotificationTone(uriStr, displayName)
+        }
+        NotificationHelper(context).syncNotificationChannels()
+        if (playPreview && alarmSoundEnabled) {
+            playTonePreview(uriStr)
+        }
+    }
+
+    val ringtonePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val data = result.data
+            val pickedUri = if (data != null) {
+                IntentCompat.getParcelableExtra(data, RingtoneManager.EXTRA_RINGTONE_PICKED_URI, Uri::class.java)
+            } else null
+
+            if (pickedUri == null) {
+                applySelectedNotificationTone(
+                    uriStr = "",
+                    displayName = PreferencesManager.DEFAULT_NOTIFICATION_TONE_NAME
+                )
+            } else {
+                val resolvedTitle = runCatching {
+                    RingtoneManager.getRingtone(context, pickedUri)?.getTitle(context)?.trim()
+                }.getOrNull().orEmpty().ifBlank { "Custom Notification Sound" }
+                applySelectedNotificationTone(
+                    uriStr = pickedUri.toString(),
+                    displayName = resolvedTitle
+                )
+            }
+        }
+    }
+
+    fun openAndroidRingtonePicker() {
+        val currentUri = if (notificationToneUri.isNotBlank()) {
+            runCatching { Uri.parse(notificationToneUri) }.getOrNull()
+        } else {
+            RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        }
+        val pickerIntent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+            putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALL)
+            putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Choose Notification Tone")
+            putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+            putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+            putExtra(
+                RingtoneManager.EXTRA_RINGTONE_DEFAULT_URI,
+                RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            )
+            if (currentUri != null) {
+                putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, currentUri)
+            }
+        }
+        if (pickerIntent.resolveActivity(context.packageManager) != null) {
+            try {
+                stopAudioPreview()
+                ringtonePickerLauncher.launch(pickerIntent)
+                return
+            } catch (_: Exception) {
+            }
+        }
+        Toast.makeText(context, "System ringtone picker is unavailable on this device.", Toast.LENGTH_SHORT).show()
     }
 
     DisposableEffect(Unit) {
@@ -182,6 +325,7 @@ fun SettingsScreen(
             sound = alarmSoundEnabled,
             vibrate = vibrationEnabled
         )
+        NotificationHelper(context).syncNotificationChannels()
     }
 
     if (showPrivacyDialog) {
@@ -357,6 +501,18 @@ fun SettingsScreen(
                         }
                     }
                 },
+                actions = {
+                    IconButton(
+                        onClick = { showLogoutConfirmDialog = true },
+                        modifier = Modifier.testTag("logout_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Logout,
+                            contentDescription = "Sign Out",
+                            tint = VuDangerRed
+                        )
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
             )
         }
@@ -368,7 +524,8 @@ fun SettingsScreen(
             contentPadding = PaddingValues(14.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Student Account Card
+
+            // Auto-Sync on App Launch Card (directly above Daily Routine Sync & Alarms)
             item {
                 Card(
                     shape = RoundedCornerShape(16.dp),
@@ -376,67 +533,53 @@ fun SettingsScreen(
                     border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                    ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Sync, contentDescription = null, tint = VuInfoCyan, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "App Launch Synchronization",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            if (studentAvatarFile != null && studentAvatarFile.exists() && studentAvatarFile.length() > 0) {
-                                AsyncImage(
-                                    model = studentAvatarFile,
-                                    contentDescription = "Profile Picture",
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier
-                                        .size(46.dp)
-                                        .clip(CircleShape)
-                                        .border(2.dp, VuGreenPrimary, CircleShape)
-                                )
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .size(46.dp)
-                                        .background(VuInfoCyan.copy(alpha = 0.12f), CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(Icons.Default.Person, contentDescription = null, tint = VuInfoCyan)
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
+                            Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                                Text("Auto-Sync on App Launch", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                                 Text(
-                                    text = studentId.ifEmpty { "Active Student" },
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp
-                                )
-                                Text(
-                                    text = "Connected to vulms.vu.edu.pk",
+                                    text = if (autoSyncOnLaunch) "Fresh LMS sync runs automatically every time the app opens." else "Manual mode: tap refresh on the Dashboard to sync.",
                                     fontSize = 11.sp,
-                                    color = VuGreenPrimary
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
+                            Switch(
+                                checked = autoSyncOnLaunch,
+                                onCheckedChange = {
+                                    autoSyncOnLaunch = it
+                                    prefs.setAutoSyncOnLaunch(it)
+                                },
+                                modifier = Modifier.testTag("auto_sync_launch_switch")
+                            )
                         }
 
-                        Spacer(modifier = Modifier.height(14.dp))
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
-                        OutlinedButton(
-                            onClick = { showLogoutConfirmDialog = true },
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = VuDangerRed),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(42.dp)
-                                .testTag("logout_button")
-                        ) {
-                            Icon(Icons.Default.Logout, contentDescription = null, modifier = Modifier.size(16.dp), tint = VuDangerRed)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Sign Out", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        }
+                        Text(
+                            text = "⚠️ Opening the app with Auto-Sync on will log you out of any active VU LMS browser session.",
+                            fontSize = 11.5.sp,
+                            lineHeight = 15.sp,
+                            color = VuWarningAmber,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.testTag("auto_sync_warning_text")
+                        )
                     }
                 }
             }
@@ -461,13 +604,12 @@ fun SettingsScreen(
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         Text(
-                            text = "⚠️ Notice: At scheduled sync times, please avoid active tests/sessions in your web browser, as simultaneous requests may invalidate your browser session.",
-                            fontSize = 12.sp,
-                            color = VuWarningAmber,
-                            fontWeight = FontWeight.Medium,
+                            text = "Pick routine times outside active browser quizzes or exams so automatic syncs never interrupt your work.",
+                            fontSize = 11.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             lineHeight = 16.sp
                         )
 
@@ -572,15 +714,19 @@ fun SettingsScreen(
                 }
             }
 
-            // Notification & Alarm Settings Card
+            // Alerts & Notifications Card
             item {
+                val isMuted = !alarmSoundEnabled
                 Card(
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Notifications, contentDescription = null, tint = VuWarningAmber, modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(8.dp))
@@ -592,198 +738,216 @@ fun SettingsScreen(
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(12.dp))
-
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Enable Notifications", fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                                Text("Master toggle for all alerts and briefings", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                                Text("Enable Notifications", fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    text = if (notificationsEnabled) "Routine briefings, deadlines, and urgent reminders active." else "All scheduled notifications and alarms paused.",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                             Switch(
                                 checked = notificationsEnabled,
                                 onCheckedChange = {
                                     notificationsEnabled = it
                                     saveNotifSettings()
-                                }
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Full-Screen Alarm at Evening Last Reminder", fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                                Text(
-                                    text = if (urgentAlarmEnabled) "Wakes screen with continuous full alarm overlay for today's activities at evening reminder." else "Off: Shows regular heads-up notification in shade instead.",
-                                    fontSize = 11.sp,
-                                    color = if (urgentAlarmEnabled) VuSuccessMint else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Switch(
-                                checked = urgentAlarmEnabled,
-                                onCheckedChange = {
-                                    urgentAlarmEnabled = it
-                                    saveNotifSettings()
-                                }
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        var autoSyncOnLaunch by remember { mutableStateOf(prefs.isAutoSyncOnLaunch()) }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Auto-Sync on App Launch", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                Text(
-                                    text = if (autoSyncOnLaunch) "Fresh LMS sync runs automatically every time app opens." else "Manual mode: Tap refresh button on dashboard to sync.",
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Switch(
-                                checked = autoSyncOnLaunch,
-                                onCheckedChange = {
-                                    autoSyncOnLaunch = it
-                                    prefs.setAutoSyncOnLaunch(it)
-                                }
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Alarm & Notification Audio", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                Text(
-                                    text = if (alarmSoundEnabled) "Plays audible sound for alarms and scheduled reminders." else "Off: Silent alerts (vibration only).",
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Switch(
-                                checked = alarmSoundEnabled,
-                                onCheckedChange = {
-                                    alarmSoundEnabled = it
-                                    saveNotifSettings()
                                     if (!it) {
-                                        activeRingtone?.stop()
-                                        isPlayingPreview = false
+                                        stopAudioPreview()
                                     }
-                                }
+                                },
+                                modifier = Modifier.testTag("enable_notifications_switch")
                             )
                         }
 
-                        if (alarmSoundEnabled) {
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Text("Select Ringtone / Tone:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                            Spacer(modifier = Modifier.height(8.dp))
+                        if (!notificationsEnabled) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "Turn on notifications above to customize evening alarms, ringtones, and vibration.",
+                                    fontSize = 11.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                                )
+                            }
+                        } else {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
-                            val toneOptions = listOf(
-                                Triple("alarm", "Alarm Tone", "High-urgency loud wake tone"),
-                                Triple("notification", "Notification Sound", "Standard Android reminder tone"),
-                                Triple("chime", "Gentle Chime", "Soft chime for quiet environments")
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                                    Text("Full-Screen Evening Alarm", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                    Text(
+                                        text = if (urgentAlarmEnabled) "Wakes screen with full alarm overlay for urgent deadlines." else "Posts a standard heads-up notification instead.",
+                                        fontSize = 11.sp,
+                                        color = if (urgentAlarmEnabled) VuSuccessMint else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = urgentAlarmEnabled,
+                                    onCheckedChange = {
+                                        urgentAlarmEnabled = it
+                                        saveNotifSettings()
+                                    },
+                                    modifier = Modifier.testTag("urgent_alarm_switch")
+                                )
+                            }
 
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                toneOptions.forEach { (key, title, subtitle) ->
-                                    val isSelected = notificationRingtone == key
-                                    Surface(
-                                        shape = RoundedCornerShape(10.dp),
-                                        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                                        border = androidx.compose.foundation.BorderStroke(
-                                            width = if (isSelected) 1.5.dp else 1.dp,
-                                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
-                                        ),
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                                    Text("Mute Notifications & Alarms", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                    Text(
+                                        text = if (isMuted) "Muted: alerts deliver silently (vibration only if enabled)." else "Sound on: plays selected tone for notifications and alarm tone for urgent overlay.",
+                                        fontSize = 11.sp,
+                                        color = if (isMuted) VuWarningAmber else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = isMuted,
+                                    onCheckedChange = { muted ->
+                                        alarmSoundEnabled = !muted
+                                        saveNotifSettings()
+                                        if (muted) {
+                                            stopAudioPreview()
+                                        }
+                                    },
+                                    modifier = Modifier.testTag("mute_notifications_switch")
+                                )
+                            }
+
+                            if (!isMuted) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        1.dp,
+                                        MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 56.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable { openAndroidRingtonePicker() }
+                                        .testTag("pick_notification_tone_button")
+                                ) {
+                                    Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .clickable {
-                                                notificationRingtone = key
-                                                prefs.setNotificationRingtone(key)
-                                                playTonePreview(key)
-                                            }
+                                            .padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                            verticalAlignment = Alignment.CenterVertically
+                                        Box(
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .background(VuInfoCyan.copy(alpha = 0.14f), RoundedCornerShape(10.dp)),
+                                            contentAlignment = Alignment.Center
                                         ) {
-                                            RadioButton(
-                                                selected = isSelected,
-                                                onClick = {
-                                                    notificationRingtone = key
-                                                    prefs.setNotificationRingtone(key)
-                                                    playTonePreview(key)
-                                                },
-                                                modifier = Modifier.size(24.dp)
+                                            Icon(
+                                                imageVector = Icons.Default.MusicNote,
+                                                contentDescription = null,
+                                                tint = VuInfoCyan,
+                                                modifier = Modifier.size(18.dp)
                                             )
-                                            Spacer(modifier = Modifier.width(10.dp))
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    text = title,
-                                                    fontSize = 12.sp,
-                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                                    color = MaterialTheme.colorScheme.onSurface
-                                                )
-                                                Text(
-                                                    text = subtitle,
-                                                    fontSize = 10.sp,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                            if (isSelected && isPlayingPreview) {
-                                                Surface(
-                                                    shape = RoundedCornerShape(4.dp),
-                                                    color = VuSuccessMint.copy(alpha = 0.15f)
-                                                ) {
-                                                    Text(
-                                                        text = "Playing...",
-                                                        fontSize = 10.sp,
-                                                        color = VuSuccessMint,
-                                                        fontWeight = FontWeight.Bold,
-                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                    )
+                                        }
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "Notification Ringtone",
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Text(
+                                                text = notificationToneName,
+                                                fontSize = 13.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = {
+                                                if (isPlayingPreview) {
+                                                    stopAudioPreview()
+                                                } else {
+                                                    playTonePreview(notificationToneUri)
                                                 }
+                                            },
+                                            modifier = Modifier
+                                                .minimumInteractiveComponentSize()
+                                                .testTag("preview_notification_tone_button")
+                                        ) {
+                                            Icon(
+                                                imageVector = if (isPlayingPreview) Icons.Default.Stop else Icons.Default.PlayArrow,
+                                                contentDescription = if (isPlayingPreview) "Stop ringtone preview" else "Preview notification ringtone",
+                                                tint = if (isPlayingPreview) VuDangerRed else VuInfoCyan
+                                            )
+                                        }
+                                        if (notificationToneUri.isNotBlank()) {
+                                            IconButton(
+                                                onClick = {
+                                                    applySelectedNotificationTone(
+                                                        uriStr = "",
+                                                        displayName = PreferencesManager.DEFAULT_NOTIFICATION_TONE_NAME
+                                                    )
+                                                },
+                                                modifier = Modifier
+                                                    .minimumInteractiveComponentSize()
+                                                    .testTag("reset_notification_tone_button")
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.RestartAlt,
+                                                    contentDescription = "Reset notification ringtone to default",
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
                                             }
                                         }
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                            contentDescription = "Change notification ringtone",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier
+                                                .padding(end = 6.dp)
+                                                .size(18.dp)
+                                        )
                                     }
                                 }
                             }
-                        }
 
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Vibrate on Alert", fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                                Text("Haptic vibration pattern on alarms", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Switch(
-                                checked = vibrationEnabled,
-                                onCheckedChange = {
-                                    vibrationEnabled = it
-                                    saveNotifSettings()
-                                    triggerVibration()
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                                    Text("Vibrate on Alert", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                    Text("Haptic vibration on notifications and alarms", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
-                            )
+                                Switch(
+                                    checked = vibrationEnabled,
+                                    onCheckedChange = {
+                                        vibrationEnabled = it
+                                        saveNotifSettings()
+                                        triggerVibration()
+                                    },
+                                    modifier = Modifier.testTag("vibrate_alert_switch")
+                                )
+                            }
                         }
                     }
                 }
@@ -890,7 +1054,10 @@ fun SettingsScreen(
                     border = androidx.compose.foundation.BorderStroke(1.dp, VuGreenPrimary.copy(alpha = 0.4f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.BatteryChargingFull, contentDescription = null, tint = VuGreenPrimary, modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(8.dp))
@@ -902,17 +1069,21 @@ fun SettingsScreen(
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(8.dp))
-
                         Text(
-                            text = "To ensure morning briefings and evening alarms wake your device reliably on time without Android power-saving battery delays:",
-                            fontSize = 12.sp,
+                            text = "Grant these permissions so Android delivers morning briefings and evening deadline alarms reliably on time:",
+                            fontSize = 11.5.sp,
+                            lineHeight = 16.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        OutlinedButton(
+                        PermissionStatusRow(
+                            icon = Icons.Default.ElectricBolt,
+                            iconTint = VuWarningAmber,
+                            title = "Battery Optimization",
+                            subtitle = if (isBatteryUnrestricted) "Unrestricted background execution enabled" else "Disable battery restrictions to prevent delayed alarms",
+                            statusLabel = if (isBatteryUnrestricted) "Allowed" else "Allow",
+                            isGranted = isBatteryUnrestricted,
+                            testTagValue = "battery_optimization_button",
                             onClick = {
                                 val pm = context.packageManager
                                 val reqIntent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
@@ -922,7 +1093,7 @@ fun SettingsScreen(
                                 if (!isBatteryUnrestricted && reqIntent.resolveActivity(pm) != null) {
                                     try {
                                         context.startActivity(reqIntent)
-                                        return@OutlinedButton
+                                        return@PermissionStatusRow
                                     } catch (_: Exception) {}
                                 }
                                 val listIntent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
@@ -936,33 +1107,21 @@ fun SettingsScreen(
                                             Toast.LENGTH_LONG
                                         ).show()
                                         context.startActivity(listIntent)
-                                        return@OutlinedButton
+                                        return@PermissionStatusRow
                                     } catch (_: Exception) {}
                                 }
                                 openAppDetailsSettings("Tap Battery -> Select 'Unrestricted'")
-                            },
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("battery_optimization_button")
-                        ) {
-                            Icon(
-                                imageVector = if (isBatteryUnrestricted) Icons.Default.CheckCircle else Icons.Default.ElectricBolt,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = VuGreenPrimary
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = if (isBatteryUnrestricted) "Battery Optimization Disabled ✅ (Manage)" else "Disable Battery Optimization for Alarms",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
+                            }
+                        )
 
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        OutlinedButton(
+                        PermissionStatusRow(
+                            icon = Icons.Default.RocketLaunch,
+                            iconTint = VuWarningAmber,
+                            title = "Auto-Run / Background Launch",
+                            subtitle = "Allow background startup on MIUI, ColorOS, OnePlus & Samsung",
+                            statusLabel = "Open",
+                            isGranted = false,
+                            testTagValue = "auto_run_settings_button",
                             onClick = {
                                 val pm = context.packageManager
                                 val autoStartIntents = listOf(
@@ -998,20 +1157,18 @@ fun SettingsScreen(
                                 if (!launched) {
                                     openAppDetailsSettings("Tap 'Battery' -> Select 'Unrestricted' & allow Background Usage")
                                 }
-                            },
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("auto_run_settings_button")
-                        ) {
-                            Icon(Icons.Default.RocketLaunch, contentDescription = null, modifier = Modifier.size(16.dp), tint = VuWarningAmber)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Allow Auto-Run / Background Execution", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                        }
+                            }
+                        )
 
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            OutlinedButton(
+                            PermissionStatusRow(
+                                icon = Icons.Default.Alarm,
+                                iconTint = VuInfoCyan,
+                                title = "Exact Alarm Scheduling",
+                                subtitle = if (isExactAlarmAllowed) "Alarms and routines fire at the exact scheduled minute" else "Required on Android 12+ for punctual reminder alarms",
+                                statusLabel = if (isExactAlarmAllowed) "Allowed" else "Allow",
+                                isGranted = isExactAlarmAllowed,
+                                testTagValue = "exact_alarm_permission_row",
                                 onClick = {
                                     try {
                                         val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
@@ -1022,28 +1179,19 @@ fun SettingsScreen(
                                     } catch (e: Exception) {
                                         openAppDetailsSettings("Allow 'Alarms & reminders' in App Settings")
                                     }
-                                },
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Icon(
-                                    imageVector = if (isExactAlarmAllowed) Icons.Default.CheckCircle else Icons.Default.Alarm,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp),
-                                    tint = if (isExactAlarmAllowed) VuGreenPrimary else VuInfoCyan
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = if (isExactAlarmAllowed) "Exact Alarm Scheduling Allowed ✅" else "Allow Exact Alarm Scheduling",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
+                                }
+                            )
                         }
 
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            OutlinedButton(
+                            PermissionStatusRow(
+                                icon = Icons.Default.NotificationsActive,
+                                iconTint = VuDangerRed,
+                                title = "Full-Screen Lock-Screen Alarm",
+                                subtitle = if (isFullScreenAllowed) "Urgent evening alarms can wake your lock screen" else "Required on Android 14+ to display full-screen alarms",
+                                statusLabel = if (isFullScreenAllowed) "Allowed" else "Allow",
+                                isGranted = isFullScreenAllowed,
+                                testTagValue = "full_screen_alarm_permission_row",
                                 onClick = {
                                     try {
                                         val intent = Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT).apply {
@@ -1054,23 +1202,8 @@ fun SettingsScreen(
                                     } catch (e: Exception) {
                                         openAppDetailsSettings("Enable full-screen notifications for evening alarms")
                                     }
-                                },
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Icon(
-                                    imageVector = if (isFullScreenAllowed) Icons.Default.CheckCircle else Icons.Default.NotificationsActive,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp),
-                                    tint = if (isFullScreenAllowed) VuGreenPrimary else VuDangerRed
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = if (isFullScreenAllowed) "Full-Screen Lock-Screen Alarm Allowed ✅" else "Allow Full-Screen Lock-Screen Alarm",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
+                                }
+                            )
                         }
                     }
                 }
@@ -1184,7 +1317,22 @@ fun SettingsScreen(
                     border = androidx.compose.foundation.BorderStroke(1.dp, VuInfoCyan.copy(alpha = 0.35f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(18.dp)) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Code, contentDescription = null, tint = VuInfoCyan, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Developer & Support",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        Spacer(modifier = Modifier.height(12.dp))
+
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth()
@@ -1243,7 +1391,9 @@ fun SettingsScreen(
                             Button(
                                 onClick = {
                                     try {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/hanzlarehman404"))
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/hanzlarehman404")).apply {
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
                                         context.startActivity(intent)
                                     } catch (ignored: Exception) {}
                                 },
@@ -1251,7 +1401,7 @@ fun SettingsScreen(
                                 colors = ButtonDefaults.buttonColors(containerColor = VuInfoCyan),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .heightIn(min = 44.dp)
+                                    .heightIn(min = 48.dp)
                                     .testTag("contact_donate_button")
                             ) {
                                 Icon(Icons.Default.Favorite, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -1262,19 +1412,43 @@ fun SettingsScreen(
                             FilledTonalButton(
                                 onClick = {
                                     try {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/hanzlarehman404/vu-lms-reminder"))
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/hanzlarehman404/vu-lms-reminder")).apply {
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
                                         context.startActivity(intent)
                                     } catch (ignored: Exception) {}
                                 },
                                 shape = RoundedCornerShape(10.dp),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .heightIn(min = 44.dp)
+                                    .heightIn(min = 48.dp)
                                     .testTag("contribute_repo_button")
                             ) {
                                 Icon(Icons.Default.Code, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text("Contribute on GitHub Repository", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    try {
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/hanzlarehman404/vu-lms-reminder/issues")).apply {
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
+                                        context.startActivity(intent)
+                                    } catch (ignored: Exception) {}
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = VuWarningAmber),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, VuWarningAmber.copy(alpha = 0.55f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
+                                    .testTag("report_issue_button")
+                            ) {
+                                Icon(Icons.Default.BugReport, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Report an Issue", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }

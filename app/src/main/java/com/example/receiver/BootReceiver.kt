@@ -22,6 +22,11 @@ class BootReceiver : BroadcastReceiver() {
                     val pending = db.activityDao().getPendingUpcomingActivitiesSync(now)
                     val scheduler = AlarmScheduler(context)
                     scheduler.rescheduleAll(pending)
+                    RemoteNotificationScheduler.scheduleNextBackgroundSync(
+                        context = context,
+                        delayMinutes = RemoteNotificationScheduler.REFRESH_INTERVAL_MINUTES,
+                        replaceExisting = false
+                    )
                     Log.d("BootReceiver", "Rescheduled ${pending.size} upcoming alarms on boot")
                 } catch (e: Exception) {
                     Log.e("BootReceiver", "Error restoring alarms on boot", e)
