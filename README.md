@@ -173,8 +173,9 @@ Android App (Jetpack Compose Material 3)
 ```
 
 ### Transport & Local Credential Hardening
-- **HTTPS-Only Network Policy**: `android:usesCleartextTraffic="false"` is enforced globally in `AndroidManifest.xml`.
-- **Standard TLS & Hostname Verification**: `VuLmsNetworkService` relies exclusively on Android/OkHttp default certificate chain and hostname verification (no trust-all bypasses), and the in-app Card Payment WebView cancels invalid TLS handshakes via `handler.cancel()`.
+- **HTTPS-Only Network Policy**: `android:usesCleartextTraffic="false"` and `network_security_config.xml` (`cleartextTrafficPermitted="false"`) enforce HTTPS globally.
+- **Standard TLS & Hostname Verification**: `VuLmsNetworkService` relies exclusively on Android/OkHttp default certificate chain and hostname verification (no trust-all bypasses or leaf certificate pinning), and the in-app Card Payment WebView cancels invalid TLS handshakes via `handler.cancel()`.
+- **Scoped Android 12 Root Compatibility**: `network_security_config.xml` keeps Android's `<certificates src="system" />` store enabled across all domains (GitHub, payment gateways, and external services) while adding the SHA-256-verified **Sectigo Public Server Authentication Root R46** CA strictly as an additional trust anchor for `vu.edu.pk` so Android 12 devices validate VU LMS's certificate chain cleanly.
 - **Backup & Transfer Exclusion**: Credential-containing preferences (`vu_lms_app_prefs.xml`) are excluded from Android cloud backups (`backup_rules.xml`) and device-to-device transfers (`data_extraction_rules.xml`).
 
 ---

@@ -563,6 +563,9 @@ class VuLmsNetworkService(
                         if (updateInfo != null) {
                             return@withContext Result.success(updateInfo)
                         }
+                        lastException = IOException("Invalid update.json format from GitHub")
+                    } else {
+                        lastException = IOException("GitHub returned HTTP ${response.code}")
                     }
                 }
             } catch (e: Exception) {
@@ -570,7 +573,7 @@ class VuLmsNetworkService(
                 Log.w(TAG, "Error querying update from $url: ${e.message}")
             }
         }
-        Result.failure(lastException ?: IOException("Failed to check for updates. Kindly try again later or contact the developer."))
+        Result.failure(lastException ?: IOException("Failed to reach GitHub release metadata."))
     }
 
     /**

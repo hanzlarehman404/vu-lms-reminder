@@ -50,6 +50,7 @@ import com.example.data.local.PreferencesManager
 import com.example.receiver.NotificationHelper
 import com.example.ui.components.AppDocsDialog
 import com.example.ui.components.ManualNotificationsUiState
+import com.example.ui.components.ManualUpdateStatusDialog
 import com.example.ui.components.PrivacyDisclaimerDialog
 import com.example.ui.components.UpcomingNoticesDialog
 import com.example.ui.theme.*
@@ -371,93 +372,12 @@ fun SettingsScreen(
     }
 
 
-    when (manualUpdateResult) {
-        is ManualUpdateResult.UpToDate -> {
-            AlertDialog(
-                onDismissRequest = onDismissManualUpdateResult,
-                icon = {
-                    Icon(
-                        Icons.Default.CheckCircle,
-                        contentDescription = null,
-                        tint = VuGreenPrimary,
-                        modifier = Modifier.size(36.dp)
-                    )
-                },
-                title = { Text("App is Up to Date", fontWeight = FontWeight.Bold) },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            "You are currently running the latest version of VU LMS Activity Reminder (v${manualUpdateResult.version}).",
-                            fontSize = 13.sp
-                        )
-                        if (manualUpdateResult.releaseName.isNotEmpty()) {
-                            Text(
-                                "Release: ${manualUpdateResult.releaseName}",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                },
-                confirmButton = {
-                    Button(
-                        onClick = onDismissManualUpdateResult,
-                        colors = ButtonDefaults.buttonColors(containerColor = VuGreenPrimary)
-                    ) {
-                        Text("OK")
-                    }
-                }
-            )
-        }
-        is ManualUpdateResult.Error -> {
-            AlertDialog(
-                onDismissRequest = onDismissManualUpdateResult,
-                icon = {
-                    Icon(
-                        Icons.Default.ErrorOutline,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(36.dp)
-                    )
-                },
-                title = { Text("Update Check", fontWeight = FontWeight.Bold) },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(
-                            "Unable to check for updates right now.",
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp
-                        )
-                        Text(
-                            "Kindly try again later or contact the developer for assistance.",
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                },
-                confirmButton = {
-                    Button(onClick = onDismissManualUpdateResult) {
-                        Text("OK")
-                    }
-                },
-                dismissButton = {
-                    OutlinedButton(
-                        onClick = {
-                            try {
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/hanzlarehman404")).apply {
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                context.startActivity(intent)
-                            } catch (ignored: Exception) {}
-                            onDismissManualUpdateResult()
-                        }
-                    ) {
-                        Text("Contact Developer")
-                    }
-                }
-            )
-        }
-        null -> {}
+    manualUpdateResult?.let { result ->
+        ManualUpdateStatusDialog(
+            result = result,
+            onRetry = onCheckUpdate,
+            onDismiss = onDismissManualUpdateResult
+        )
     }
 
     manualNotificationsState?.let { notifState ->
@@ -1276,7 +1196,7 @@ fun SettingsScreen(
                                     color = MaterialTheme.colorScheme.primary
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("Checking for Updates...", fontSize = 12.sp)
+                                Text("Fetching GitHub Release & Signature...", fontSize = 12.sp)
                             } else {
                                 Icon(Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))

@@ -429,7 +429,7 @@ fun SecurityVerificationDialog(
     }
 }
 
-private fun getInstalledCertificateSha256(context: Context): String {
+internal fun getInstalledCertificateSha256(context: Context): String {
     return try {
         val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             context.packageManager.getPackageInfo(

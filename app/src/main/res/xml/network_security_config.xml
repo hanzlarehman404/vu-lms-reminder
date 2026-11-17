@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Preserve strict HTTPS + Android system CA validation globally -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!--
+        Android 12 (API 31/32) lacks Sectigo Public Server Authentication Root R46 in its static
+        system CA store. Add the verified Root R46 CA strictly alongside system CAs for vu.edu.pk
+        and its subdomains without pinning leaf/intermediate certs or weakening TLS validation.
+    -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">vu.edu.pk</domain>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="@raw/sectigo_root_r46" />
+        </trust-anchors>
+    </domain-config>
+</network-security-config>

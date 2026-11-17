@@ -55,9 +55,9 @@ import com.example.ui.components.SecurityVerificationDialog
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.LoginUiState
 
-private val LoginBgTop = Color(0xFF0C1526)
-private val LoginBgBottom = Color(0xFF13223D)
-private val LoginCardSurface = Color(0xFF17253F)
+private val LoginBgTop = Color(0xFF0F1117)
+private val LoginBgBottom = Color(0xFF161922)
+private val LoginCardSurface = Color(0xFF1B1E28)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -115,24 +115,24 @@ fun LoginScreen(
                 )
             )
     ) {
-        // Subtle restrained cyan ambient glow
+        // Subtle neutral-charcoal ambient glow
         Canvas(modifier = Modifier.fillMaxSize()) {
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(VuInfoCyan.copy(alpha = 0.16f), Color.Transparent),
+                    colors = listOf(VuInfoCyan.copy(alpha = 0.06f), Color.Transparent),
                     center = Offset(size.width * 0.5f, size.height * 0.14f),
-                    radius = size.minDimension * 0.62f
+                    radius = size.minDimension * 0.58f
                 ),
-                radius = size.minDimension * 0.62f,
+                radius = size.minDimension * 0.58f,
                 center = Offset(size.width * 0.5f, size.height * 0.14f)
             )
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(VuSuccessMint.copy(alpha = 0.08f), Color.Transparent),
+                    colors = listOf(VuSuccessMint.copy(alpha = 0.05f), Color.Transparent),
                     center = Offset(size.width * 0.15f, size.height * 0.88f),
-                    radius = size.minDimension * 0.55f
+                    radius = size.minDimension * 0.50f
                 ),
-                radius = size.minDimension * 0.55f,
+                radius = size.minDimension * 0.50f,
                 center = Offset(size.width * 0.15f, size.height * 0.88f)
             )
         }
@@ -170,11 +170,11 @@ fun LoginScreen(
                             drawCircle(
                                 brush = Brush.radialGradient(
                                     colors = listOf(
-                                        VuInfoCyan.copy(alpha = 0.22f),
+                                        VuInfoCyan.copy(alpha = 0.08f),
                                         Color.Transparent
                                     ),
                                     center = center,
-                                    radius = size.minDimension * 0.68f
+                                    radius = size.minDimension * 0.65f
                                 )
                             )
                         }
@@ -207,7 +207,7 @@ fun LoginScreen(
                         text = "🎓 Virtual University of Pakistan",
                         fontSize = 12.5.sp,
                         fontWeight = FontWeight.Medium,
-                        color = Color(0xFFB5C7E2),
+                        color = Color(0xFFC2C7D0),
                         textAlign = TextAlign.Center
                     )
 
@@ -238,9 +238,9 @@ fun LoginScreen(
                 ) {
                     Surface(
                         shape = RoundedCornerShape(20.dp),
-                        color = LoginCardSurface.copy(alpha = 0.94f),
+                        color = LoginCardSurface.copy(alpha = 0.96f),
                         shadowElevation = 8.dp,
-                        border = BorderStroke(1.dp, VuInfoCyan.copy(alpha = 0.32f)),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(
@@ -278,14 +278,14 @@ fun LoginScreen(
                                 focusedTextColor = Color.White,
                                 unfocusedTextColor = Color.White,
                                 focusedBorderColor = VuInfoCyan,
-                                unfocusedBorderColor = Color.White.copy(alpha = 0.22f),
+                                unfocusedBorderColor = Color.White.copy(alpha = 0.20f),
                                 focusedLabelColor = VuInfoCyan,
-                                unfocusedLabelColor = Color(0xFFA6B7D4),
-                                focusedPlaceholderColor = Color(0xFF7B8EAC),
-                                unfocusedPlaceholderColor = Color(0xFF7B8EAC),
+                                unfocusedLabelColor = Color(0xFFAEB5C2),
+                                focusedPlaceholderColor = Color(0xFF7F8694),
+                                unfocusedPlaceholderColor = Color(0xFF7F8694),
                                 cursorColor = VuInfoCyan,
-                                focusedContainerColor = LoginBgTop.copy(alpha = 0.72f),
-                                unfocusedContainerColor = LoginBgTop.copy(alpha = 0.52f)
+                                focusedContainerColor = LoginBgTop.copy(alpha = 0.78f),
+                                unfocusedContainerColor = LoginBgTop.copy(alpha = 0.56f)
                             )
 
                             OutlinedTextField(
@@ -333,7 +333,7 @@ fun LoginScreen(
                                         Icon(
                                             imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                                             contentDescription = if (passwordVisible) "Hide password" else "Show password",
-                                            tint = Color(0xFFB5C7E3)
+                                            tint = Color(0xFFAEB5C2)
                                         )
                                     }
                                 },
@@ -537,9 +537,9 @@ fun LoginScreen(
                             }
                         },
                         shape = RoundedCornerShape(14.dp),
-                        border = BorderStroke(1.dp, VuInfoCyan.copy(alpha = 0.48f)),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
                         colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = LoginCardSurface.copy(alpha = 0.92f),
+                            containerColor = LoginCardSurface.copy(alpha = 0.94f),
                             contentColor = Color.White
                         ),
                         contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),

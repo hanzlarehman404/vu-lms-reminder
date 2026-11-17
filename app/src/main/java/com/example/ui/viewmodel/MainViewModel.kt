@@ -27,8 +27,15 @@ sealed class LoginUiState {
 }
 
 sealed class ManualUpdateResult {
-    data class UpToDate(val version: String, val releaseName: String) : ManualUpdateResult()
-    data class Error(val message: String) : ManualUpdateResult()
+    data class UpToDate(
+        val updateInfo: AppUpdateInfo,
+        val installedVersion: String = BuildConfig.VERSION_NAME,
+        val installedVersionCode: Int = BuildConfig.VERSION_CODE
+    ) : ManualUpdateResult()
+    data class Error(
+        val message: String,
+        val detail: String = ""
+    ) : ManualUpdateResult()
 }
 
 data class DashboardStats(
@@ -429,15 +436,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val currentVersionCode = BuildConfig.VERSION_CODE
                 if (info != null && info.versionCode > currentVersionCode) {
                     _updateInfo.value = info
-                } else if (isManual) {
+                } else if (isManual && info != null) {
                     _manualUpdateResult.value = ManualUpdateResult.UpToDate(
-                        version = BuildConfig.VERSION_NAME,
-                        releaseName = info?.releaseName.orEmpty()
+                        updateInfo = info,
+                        installedVersion = BuildConfig.VERSION_NAME,
+                        installedVersionCode = currentVersionCode
+                    )
+                } else if (isManual) {
+                    _manualUpdateResult.value = ManualUpdateResult.Error(
+                        message = "GitHub update metadata was empty.",
+                        detail = "The fetched update.json payload did not contain release details."
                     )
                 }
             } else if (isManual) {
+                val reason = result.exceptionOrNull()?.localizedMessage.orEmpty()
                 _manualUpdateResult.value = ManualUpdateResult.Error(
-                    "Unable to check for updates right now. Kindly try again later or contact the developer."
+                    message = "Unable to fetch GitHub release details right now.",
+                    detail = reason
                 )
             }
         }
