@@ -2,7 +2,7 @@
   "version": "2.1.0",
   "versionCode": 3,
   "minimumSupportedVersion": 2,
-  "forceUpdate": true,
+  "forceUpdate": false,
   "releaseName": "Major Feature & Security Update",
   "releaseNotes": [
   "Added dedicated Fees tab with challan tracking, 1Bill instructions, and VU Card Payment support",
