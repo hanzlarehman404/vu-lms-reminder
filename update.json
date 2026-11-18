@@ -1,15 +1,20 @@
 {
-  "version": "1.0.0",
-  "versionCode": 1,
-  "minimumSupportedVersion": 1,
+  "version": "2.1.0",
+  "versionCode": 3,
+  "minimumSupportedVersion": 2,
   "forceUpdate": false,
-  "releaseName": "Initial Release",
+  "releaseName": "Major Feature & Security Update",
   "releaseNotes": [
-    "Initial public release",
-    "Added activity calendar",
-    "Added quiz and assignment tracking"
+  "Added dedicated Fees tab with challan tracking, 1Bill instructions, and VU Card Payment support",
+  "Added Student Portal with academic profile, enrolled courses, and offline E-Card PDF",
+  "Introduced live announcements, dashboard banners, and background notification updates",
+  "Added customizable daily reminders, continuous urgent alarms, and notification ringtone controls",
+  "Improved activity tracking with automatic completion verification and pending-task counts",
+  "Added developer signing-certificate verification and strengthened network security",
+  "Improved dashboard, notification icons, themes, and overall user experience"
   ],
-  "downloadUrl": "https://github.com/hanzlarehman404/vu-lms-reminder/releases/download/v1.0.0/vu-lms-reminder-app-v1.0.0.apk",
-  "sha256": "",
-  "publishedAt": "2026-11-01T00:00:00Z"
+  "downloadUrl": "https://github.com/hanzlarehman404/vu-lms-reminder/releases/download/v2.1.0/vu-lms-reminder-app-v2.1.0.apk",
+  "sha256": "5701ace9e9a4f75c1f0cc58055b6ae090f2cc35660eb58005d386ed5985ede2d",
+  "certificate_sha256":"27:AD:82:EF:6C:AA:E3:B7:0D:2C:A3:D9:F8:45:E2:9B:AA:04:C0:A4:5D:2A:EE:F7:AC:ED:64:24:6B:0F:99:74",
+  "publishedAt": "2026-11-17T00:00:00Z"
 }
