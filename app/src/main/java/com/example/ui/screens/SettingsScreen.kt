@@ -389,11 +389,12 @@ fun SettingsScreen(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
+                modifier = Modifier.testTag("screen_top_app_bar"),
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        // Official VU Logo in Top Bar with bundled vector fallback
                         AsyncImage(
                             model = "https://vulms.vu.edu.pk/App_Themes/Default/Images/logos/logo-1.png",
                             placeholder = painterResource(R.drawable.ic_vu_logo),
@@ -402,10 +403,10 @@ fun SettingsScreen(
                             contentDescription = "VU Logo",
                             contentScale = ContentScale.Fit,
                             modifier = Modifier
-                                .height(32.dp)
-                                .aspectRatio(16f / 10f)
+                                .size(36.dp)
+                                .testTag("top_bar_vu_logo")
                         )
-                        Spacer(modifier = Modifier.width(10.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
                         Column {
                             Text(
                                 text = "Settings & Routine",

@@ -1,15 +1,35 @@
 package com.example
 
 import android.content.Context
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.unit.dp
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.compose.ui.platform.LocalView
+import androidx.core.graphics.Insets as CoreInsets
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.local.PreferencesManager
 import com.example.data.model.ChallanEntity
@@ -297,5 +317,119 @@ class SettingsAndDashboardUiTest {
         composeRule.onNodeWithTag("one_bill_copy_button").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Copy").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Copy Voucher").assertDoesNotExist()
+    }
+
+    @Test
+    fun `nested dashboard scaffold leaves no blank row above bottom bar and renders compact top bar logo`() {
+        var contentContainerBottomPx = -1f
+        var navBarTopPx = -1f
+        var topBarTopPx = -1f
+        var topBarBottomPx = -1f
+        var logoWidthPx = -1f
+        var logoHeightPx = -1f
+
+        composeRule.setContent {
+            val view = LocalView.current
+            ViewCompat.setOnApplyWindowInsetsListener(view) { _, _ ->
+                WindowInsetsCompat.Builder()
+                    .setInsets(
+                        WindowInsetsCompat.Type.statusBars(),
+                        CoreInsets.of(0, 48, 0, 0)
+                    )
+                    .setInsets(
+                        WindowInsetsCompat.Type.navigationBars(),
+                        CoreInsets.of(0, 0, 0, 96)
+                    )
+                    .build()
+            }
+            ViewCompat.requestApplyInsets(view)
+
+            VuLmsTheme {
+                Scaffold(
+                    modifier = Modifier.fillMaxSize(),
+                    contentWindowInsets = WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal),
+                    bottomBar = {
+                        NavigationBar(
+                            modifier = Modifier
+                                .testTag("main_navigation_bar")
+                                .onGloballyPositioned { coords ->
+                                    navBarTopPx = coords.boundsInRoot().top
+                                }
+                        ) {
+                            NavigationBarItem(
+                                selected = true,
+                                onClick = {},
+                                icon = {},
+                                label = { Text("Activities") }
+                            )
+                        }
+                    }
+                ) { innerPadding ->
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding)
+                            .consumeWindowInsets(innerPadding)
+                            .onGloballyPositioned { coords ->
+                                contentContainerBottomPx = coords.boundsInRoot().bottom
+                            }
+                    ) {
+                        DashboardScreen(
+                            stats = DashboardStats(),
+                            activities = emptyList(),
+                            selectedStatus = "All",
+                            selectedActivityType = "All",
+                            showUpcomingOnly = false,
+                            searchQuery = "",
+                            studentId = "BC230401234",
+                            studentName = "MUHAMMAD HANZLA",
+                            lastSyncTime = 0L,
+                            isSyncing = false,
+                            syncMessage = null,
+                            onStatusSelected = {},
+                            onActivityTypeSelected = {},
+                            onToggleUpcomingOnly = {},
+                            onSearchQueryChanged = {},
+                            onSyncNow = {},
+                            onClearSyncMessage = {}
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.waitForIdle()
+
+        val logoBounds = composeRule.onNodeWithTag("top_bar_vu_logo")
+            .assertIsDisplayed()
+            .fetchSemanticsNode()
+            .boundsInRoot
+        logoWidthPx = logoBounds.width
+        logoHeightPx = logoBounds.height
+
+        val topBarBounds = composeRule.onNodeWithTag("screen_top_app_bar")
+            .assertIsDisplayed()
+            .fetchSemanticsNode()
+            .boundsInRoot
+        topBarTopPx = topBarBounds.top
+        topBarBottomPx = topBarBounds.bottom
+
+        val bodyBounds = composeRule.onNodeWithTag("dashboard_body_container")
+            .assertIsDisplayed()
+            .fetchSemanticsNode()
+            .boundsInRoot
+
+        // Top bar starts at root top (no extra outer status bar gap above TopAppBar)
+        assertEquals(0f, topBarTopPx, 2f)
+        // Logo is square 36.dp (no wide 16:10 blank gap)
+        assertEquals(logoHeightPx, logoWidthPx, 2f)
+        // Both Surface container and Dashboard inner body touch top of NavigationBar (no blank row above tabs)
+        assertEquals(navBarTopPx, contentContainerBottomPx, 2f)
+        assertEquals(navBarTopPx, bodyBounds.bottom, 2f)
+        // TopAppBar stays compact without double top inset
+        val singleBarExpectedMaxPx = with(composeRule.density) { 120.dp.toPx() }
+        org.junit.Assert.assertTrue(
+            "TopAppBar height ($topBarBottomPx px) should not double-apply status bar insets",
+            topBarBottomPx <= singleBarExpectedMaxPx
+        )
     }
 }

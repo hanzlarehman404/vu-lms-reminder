@@ -135,8 +135,10 @@ fun CalendarScreen(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
+                modifier = Modifier.testTag("screen_top_app_bar"),
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         AsyncImage(
@@ -147,10 +149,10 @@ fun CalendarScreen(
                             contentDescription = "VU Logo",
                             contentScale = ContentScale.Fit,
                             modifier = Modifier
-                                .height(32.dp)
-                                .aspectRatio(16f / 10f)
+                                .size(36.dp)
+                                .testTag("top_bar_vu_logo")
                         )
-                        Spacer(modifier = Modifier.width(10.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
                         Column {
                             Text(
                                 text = "Activity Calendar",
