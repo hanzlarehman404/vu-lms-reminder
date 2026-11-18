@@ -18,7 +18,9 @@ import com.example.ui.components.AppDocsDialog
 import com.example.ui.screens.CardPaymentDialog
 import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.LoginScreen
+import com.example.ui.screens.OneBillPaymentDialog
 import com.example.ui.screens.SettingsScreen
+import com.example.ui.screens.StudentPortalScreen
 import com.example.ui.theme.VuLmsTheme
 import com.example.ui.viewmodel.DashboardStats
 import com.example.ui.viewmodel.LoginUiState
@@ -239,5 +241,61 @@ class SettingsAndDashboardUiTest {
         composeRule.onNodeWithTag("card_payment_open_browser_button").assertIsDisplayed()
         composeRule.onNodeWithText("Open Bank URL").assertDoesNotExist()
         composeRule.onNodeWithText("Bank Alfalah gateway ready", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun `saved student ecard omits saved offline text and 1bill dialog shows copy`() {
+        val tempPdf = java.io.File(context.cacheDir, "bc240417499.pdf").apply {
+            writeText("%PDF-1.4\n%test\n")
+        }
+
+        composeRule.setContent {
+            VuLmsTheme {
+                StudentPortalScreen(
+                    studentProfile = com.example.data.model.StudentProfile(studentId = "BC240417499"),
+                    currentSubjects = emptyList(),
+                    studentAvatarFile = null,
+                    isDownloadingECard = false,
+                    eCardFile = tempPdf,
+                    eCardMessage = null,
+                    isSyncing = false,
+                    onDownloadECard = {},
+                    onSyncNow = {}
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Saved Offline", substring = true).assertDoesNotExist()
+        composeRule.onNodeWithText("Official Digital ID").assertIsDisplayed()
+        composeRule.onNodeWithText("View E-Card").assertIsDisplayed()
+        tempPdf.delete()
+    }
+
+    @Test
+    fun `one bill payment dialog labels button as copy`() {
+        val sampleChallan = ChallanEntity(
+            challanNo = "2026111601",
+            challanType = "Semester Fee",
+            payableAmount = "15,500",
+            paidAmount = "0",
+            balance = "15,500",
+            dueDate = "2026-11-30",
+            paidDate = "",
+            isPaid = false
+        )
+
+        composeRule.setContent {
+            VuLmsTheme {
+                OneBillPaymentDialog(
+                    challan = sampleChallan,
+                    onDismiss = {}
+                )
+            }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("one_bill_copy_button").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Copy").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Copy Voucher").assertDoesNotExist()
     }
 }

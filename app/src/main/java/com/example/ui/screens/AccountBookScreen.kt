@@ -1113,7 +1113,7 @@ fun OneBillPaymentDialog(
                                 ) {
                                     Icon(
                                         imageVector = if (isCopied) Icons.Default.Check else Icons.Default.ContentCopy,
-                                        contentDescription = "Copy Voucher",
+                                        contentDescription = "Copy",
                                         tint = if (isCopied) VuGreenPrimary else MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.size(18.dp)
                                     )
@@ -1286,20 +1286,21 @@ fun OneBillPaymentDialog(
                             },
                             modifier = Modifier
                                 .weight(1f)
-                                .height(44.dp),
+                                .heightIn(min = 48.dp)
+                                .testTag("one_bill_copy_button"),
                             shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = VuGreenPrimary)
                         ) {
                             Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Copy Voucher", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text("Copy", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
 
                         OutlinedButton(
                             onClick = onDismiss,
                             modifier = Modifier
                                 .weight(1f)
-                                .height(44.dp),
+                                .heightIn(min = 48.dp),
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Text("Done", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)

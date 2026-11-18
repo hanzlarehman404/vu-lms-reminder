@@ -294,7 +294,7 @@ fun StudentPortalScreen(
                                 }
 
                                 Text(
-                                    text = if (eCardFile != null && eCardFile.exists()) "Saved Offline • ${eCardFile.name}" else "Official Digital ID",
+                                    text = "Official Digital ID",
                                     color = Color.White.copy(alpha = 0.72f),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium
